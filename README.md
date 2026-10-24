@@ -33,8 +33,9 @@ Neovim starts in the project folder and loads your usual config.
 - Drag files from the FileSystem dock to insert `"res://path"`, or with
   Ctrl/Cmd held, `const Name = preload("res://path")`.
 - `:w` saves, and Godot reloads the script, shader or JSON.
-- Neovim runs for as long as the editor does. `:q`, `:wq` and `:x` on the
-  last window close the file but leave Neovim running. If Neovim exits anyway
+- Neovim runs for as long as the editor does. On the last window, `:q` acts
+  like `:bd` and `:wq` / `:x` like `:w` + `:bd`: the file closes, the previous
+  file (or an empty placeholder) shows, and Neovim keeps running. If Neovim exits anyway
   (`:qa`, a crash), it restarts on the last file.
 
 ## Debugger

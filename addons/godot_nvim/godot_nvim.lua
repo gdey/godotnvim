@@ -11,14 +11,36 @@ _G.godot_nvim = M
 local group = vim.api.nvim_create_augroup("godot_nvim", { clear = true })
 
 -- Quitting -----------------------------------------------------------------
--- Neovim lives as long as the Godot editor. :q / :wq / :x on the last window
--- would exit it, so give the quit another window to leave behind: QuitPre
--- runs before Neovim decides whether the window is the last one.
+-- Neovim lives as long as the Godot editor, so on the last window :q acts
+-- like :bd and :wq / :x like :w + :bd. QuitPre runs before Neovim decides
+-- whether the window is the last one: we open a second window showing
+-- another buffer (or one reusable empty placeholder), let the quit close the
+-- original, then delete the quit buffer.
+
+local placeholder
 
 local function normal_wins()
   return vim.tbl_filter(function(w)
     return vim.api.nvim_win_get_config(w).relative == ""
   end, vim.api.nvim_tabpage_list_wins(0))
+end
+
+-- The buffer to show once [buf] is gone: the alternate file, any other
+-- listed buffer, or the placeholder.
+local function next_buffer(buf)
+  local alt = vim.fn.bufnr("#")
+  if alt > 0 and alt ~= buf and vim.bo[alt].buflisted then
+    return alt
+  end
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    if b ~= buf and vim.bo[b].buflisted and vim.api.nvim_buf_is_loaded(b) then
+      return b
+    end
+  end
+  if not (placeholder and vim.api.nvim_buf_is_valid(placeholder)) then
+    placeholder = vim.api.nvim_create_buf(false, true)
+  end
+  return placeholder
 end
 
 vim.api.nvim_create_autocmd("QuitPre", {
@@ -31,13 +53,22 @@ vim.api.nvim_create_autocmd("QuitPre", {
     if #vim.api.nvim_list_tabpages() > 1 or #normal_wins() > 1 then
       return
     end
-    vim.cmd("rightbelow vnew")
+    local buf = vim.api.nvim_get_current_buf()
+    local nb = next_buffer(buf)
+    vim.cmd("rightbelow vsplit")
     local spare = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_buf(spare, nb)
     vim.api.nvim_set_current_win(win)
-    -- If the quit is refused (E37, unsaved changes), drop the spare window.
     vim.schedule(function()
-      if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_is_valid(spare) then
-        vim.api.nvim_win_close(spare, true)
+      if vim.api.nvim_win_is_valid(win) then
+        -- Quit refused (E37, unsaved changes): undo.
+        if vim.api.nvim_win_is_valid(spare) then
+          vim.api.nvim_win_close(spare, true)
+        end
+        return
+      end
+      if buf ~= placeholder and vim.api.nvim_buf_is_valid(buf) and not vim.bo[buf].modified then
+        vim.api.nvim_buf_delete(buf, {})
       end
     end)
   end,
