@@ -127,6 +127,13 @@ func set_overrides(path: String, methods: Dictionary) -> void:
 			[ProjectSettings.globalize_path(path), methods]])
 
 
+## Switches Neovim to the "godot" colorscheme built from [param colors]
+## (see theme_colors.gd).
+func set_colorscheme(colors: Dictionary) -> void:
+	if attached:
+		rpc.request("nvim_exec_lua", ["godot_nvim.set_theme(...)", [colors]])
+
+
 ## Shows [param lines] (1-based) as breakpoint signs in [param path]'s buffer.
 
 func set_breakpoints(path: String, lines: Array) -> void:
@@ -152,6 +159,7 @@ func _on_api_info(err: Variant, res: Variant) -> void:
 	var chan: int = res[0]
 	var src := FileAccess.get_file_as_string(get_script().resource_path.get_base_dir().path_join("godot_nvim.lua"))
 	var opts := {"root": working_dir if working_dir != "" else ProjectSettings.globalize_path("res://")}
+	opts["runtime"] = ProjectSettings.globalize_path(get_script().resource_path.get_base_dir().path_join("nvim"))
 	if lsp_port > 0:
 		opts["lsp"] = {"host": lsp_host, "port": lsp_port}
 	rpc.request("nvim_exec_lua", [src, [chan, opts]])

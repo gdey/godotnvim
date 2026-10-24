@@ -3,6 +3,7 @@
 --   root: project folder
 --   lsp:  { host = ..., port = ... } to attach Godot's GDScript language
 --         server to gdscript buffers, or nil to leave LSP to the user's config
+--   runtime: folder with this plugin's runtime files (colors/godot.lua)
 local chan, opts = ...
 opts = opts or {}
 local M = {}
@@ -36,6 +37,17 @@ vim.api.nvim_create_autocmd({ "BufModifiedSet", "BufWritePost", "BufDelete" }, {
     end)
   end,
 })
+
+-- With --embed, Neovim sources the user's config only once the UI attaches,
+-- which is after this script runs. Configs that reset 'runtimepath' (lazy.nvim
+-- does by default) would drop our folder, so add it again on VimEnter.
+local function add_runtime()
+  if opts.runtime and not vim.tbl_contains(vim.opt.runtimepath:get(), opts.runtime) then
+    vim.opt.runtimepath:append(opts.runtime)
+  end
+end
+add_runtime()
+vim.api.nvim_create_autocmd("VimEnter", { group = group, callback = add_runtime })
 
 -- Quitting -----------------------------------------------------------------
 -- Neovim lives as long as the Godot editor, so on the last window :q acts
@@ -107,9 +119,14 @@ vim.api.nvim_create_autocmd("QuitPre", {
 -- send their new lines back so Godot's list matches the file on disk.
 
 local bp_ns = vim.api.nvim_create_namespace("godot_nvim_breakpoints")
-vim.api.nvim_set_hl(0, "GodotBreakpoint", { default = true, link = "DiagnosticError" })
--- Used while the debugger's "Skip Breakpoints" is on.
-vim.api.nvim_set_hl(0, "GodotBreakpointSkipped", { default = true, link = "Comment" })
+local function define_breakpoint_highlights()
+  vim.api.nvim_set_hl(0, "GodotBreakpoint", { default = true, link = "DiagnosticError" })
+  -- Used while the debugger's "Skip Breakpoints" is on.
+  vim.api.nvim_set_hl(0, "GodotBreakpointSkipped", { default = true, link = "Comment" })
+end
+define_breakpoint_highlights()
+-- A colorscheme clears highlights; bring ours back.
+vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = define_breakpoint_highlights })
 
 -- absolute path -> sorted 1-based line numbers
 M.breakpoints = {}
@@ -185,6 +202,170 @@ end
 
 vim.api.nvim_create_user_command("GodotToggleBreakpoint", function() M.toggle_breakpoint() end,
   { desc = "Toggle a Godot debugger breakpoint on the cursor line" })
+
+-- Godot theme ---------------------------------------------------------------
+-- The "godot" colorscheme (colors/godot.lua) is built from the script
+-- editor's colors, which Godot pushes with set_theme: keys are the settings
+-- below text_editor/theme/highlighting/, values "#rrggbb".
+
+M.theme = nil
+
+function M.set_theme(colors)
+  M.theme = colors
+  if vim.v.vim_did_enter == 0 then
+    -- Apply after the user's config, so its colorscheme doesn't replace ours.
+    vim.api.nvim_create_autocmd("VimEnter", {
+      group = group,
+      once = true,
+      callback = function()
+        M.set_theme(M.theme)
+      end,
+    })
+    return
+  end
+  add_runtime()
+  if not pcall(vim.cmd.colorscheme, "godot") then
+    M.apply_theme()
+    vim.api.nvim_exec_autocmds("ColorScheme", { pattern = "godot", modeline = false })
+  end
+end
+
+-- Called by colors/godot.lua.
+function M.apply_theme()
+  local c = M.theme
+  if not c then
+    return
+  end
+  vim.cmd("highlight clear")
+  if vim.fn.exists("syntax_on") == 1 then
+    vim.cmd("syntax reset")
+  end
+  vim.o.background = c.dark and "dark" or "light"
+  vim.g.colors_name = "godot"
+
+  local g = function(k)
+    return c["gdscript/" .. k]
+  end
+  local groups = {
+    -- Editor UI
+    Normal = { fg = c.text_color, bg = c.background_color },
+    NormalNC = { link = "Normal" },
+    NormalFloat = { fg = c.completion_font_color, bg = c.completion_background_color },
+    FloatBorder = { fg = c.code_folding_color, bg = c.completion_background_color },
+    Pmenu = { fg = c.completion_font_color, bg = c.completion_background_color },
+    PmenuSel = { fg = c.text_color, bg = c.completion_selected_color },
+    PmenuSbar = { bg = c.completion_background_color },
+    PmenuThumb = { bg = c.completion_scroll_color },
+    PmenuMatch = { fg = c.function_color, bold = true },
+    Cursor = { fg = c.caret_background_color, bg = c.caret_color },
+    CursorLine = { bg = c.current_line_color },
+    CursorColumn = { bg = c.current_line_color },
+    ColorColumn = { bg = c.line_length_guideline_color },
+    LineNr = { fg = c.line_number_color },
+    CursorLineNr = { fg = c.text_color, bold = true },
+    SignColumn = { bg = c.background_color },
+    FoldColumn = { fg = c.code_folding_color },
+    Folded = { fg = c.code_folding_color, bg = c.folded_code_region_color },
+    Visual = { bg = c.selection_color },
+    Search = { bg = c.search_result_border_color },
+    CurSearch = { bg = c.selection_color, bold = true },
+    IncSearch = { link = "CurSearch" },
+    MatchParen = { bg = c.word_highlighted_color, bold = true },
+    NonText = { fg = c.code_folding_color },
+    EndOfBuffer = { fg = c.code_folding_color },
+    Whitespace = { fg = c.line_length_guideline_color },
+    WinSeparator = { fg = c.line_length_guideline_color },
+    StatusLine = { fg = c.text_color, bg = c.completion_background_color },
+    StatusLineNC = { fg = c.line_number_color, bg = c.completion_background_color },
+    TabLine = { fg = c.line_number_color, bg = c.completion_background_color },
+    TabLineFill = { bg = c.completion_background_color },
+    TabLineSel = { fg = c.text_color, bg = c.background_color, bold = true },
+    Title = { fg = c.function_color, bold = true },
+    Directory = { fg = c.function_color },
+    ErrorMsg = { fg = c.brace_mismatch_color },
+    WarningMsg = { fg = c["comment_markers/warning_color"] },
+    MoreMsg = { fg = c.base_type_color },
+    Question = { fg = c.base_type_color },
+    -- Syntax
+    Comment = { fg = c.comment_color },
+    SpecialComment = { fg = c.doc_comment_color },
+    String = { fg = c.string_color },
+    Character = { link = "String" },
+    Number = { fg = c.number_color },
+    Float = { link = "Number" },
+    Boolean = { fg = c.keyword_color },
+    Constant = { fg = c.text_color },
+    Identifier = { fg = c.text_color },
+    Function = { fg = c.function_color },
+    Statement = { fg = c.keyword_color },
+    Keyword = { fg = c.keyword_color },
+    StorageClass = { link = "Keyword" },
+    Conditional = { fg = c.control_flow_keyword_color },
+    Repeat = { link = "Conditional" },
+    Label = { link = "Conditional" },
+    Exception = { link = "Conditional" },
+    Operator = { fg = c.symbol_color },
+    Delimiter = { fg = c.symbol_color },
+    Special = { fg = c.symbol_color },
+    PreProc = { fg = g("annotation_color") },
+    Include = { link = "Keyword" },
+    Type = { fg = c.engine_type_color },
+    Typedef = { fg = c.base_type_color },
+    Structure = { link = "Type" },
+    Todo = { fg = c["comment_markers/warning_color"], bold = true },
+    Error = { fg = c.brace_mismatch_color },
+    -- Vim's gdscript syntax
+    gdscriptNode = { fg = g("node_reference_color") },
+    gdscriptFunctionName = { fg = g("function_definition_color") },
+    gdscriptBlockStart = { link = "Delimiter" },
+    -- Treesitter
+    ["@comment.documentation"] = { link = "SpecialComment" },
+    ["@comment.error"] = { fg = c["comment_markers/critical_color"], bold = true },
+    ["@comment.warning"] = { fg = c["comment_markers/warning_color"], bold = true },
+    ["@comment.todo"] = { fg = c["comment_markers/warning_color"], bold = true },
+    ["@comment.note"] = { fg = c["comment_markers/notice_color"], bold = true },
+    ["@keyword.conditional"] = { link = "Conditional" },
+    ["@keyword.repeat"] = { link = "Conditional" },
+    ["@keyword.return"] = { link = "Conditional" },
+    ["@type"] = { link = "Type" },
+    ["@type.builtin"] = { link = "Typedef" },
+    ["@type.definition"] = { fg = c.user_type_color },
+    ["@function"] = { fg = g("function_definition_color") },
+    ["@function.call"] = { link = "Function" },
+    ["@function.method"] = { fg = g("function_definition_color") },
+    ["@function.method.call"] = { link = "Function" },
+    ["@function.builtin"] = { fg = g("global_function_color") },
+    ["@constructor"] = { link = "Type" },
+    ["@attribute"] = { link = "PreProc" },
+    ["@variable"] = { fg = c.text_color },
+    ["@variable.member"] = { fg = c.member_variable_color },
+    ["@property"] = { fg = c.member_variable_color },
+    ["@variable.parameter"] = { fg = c.text_color },
+    ["@constant"] = { fg = c.text_color },
+    ["@constant.builtin"] = { link = "Keyword" },
+    ["@string.special"] = { fg = g("node_path_color") },
+    ["@string.special.symbol"] = { fg = g("string_name_color") },
+    ["@string.escape"] = { fg = c.string_placeholder_color },
+    ["@punctuation"] = { link = "Delimiter" },
+    ["@operator"] = { link = "Operator" },
+    -- LSP semantic tokens
+    ["@lsp.type.class"] = { link = "Type" },
+    ["@lsp.type.function"] = { link = "Function" },
+    ["@lsp.type.method"] = { link = "Function" },
+    ["@lsp.type.property"] = { link = "@property" },
+    ["@lsp.type.parameter"] = { link = "@variable.parameter" },
+    -- Diagnostics
+    DiagnosticError = { fg = c.brace_mismatch_color },
+    DiagnosticUnderlineError = { undercurl = true, sp = c.brace_mismatch_color },
+    -- This plugin's signs
+    GodotBreakpoint = { fg = c.breakpoint_color },
+  }
+  for name, spec in pairs(groups) do
+    if spec.link or next(spec) ~= nil then
+      vim.api.nvim_set_hl(0, name, spec)
+    end
+  end
+end
 
 -- Signal connections and overrides ---------------------------------------
 -- Like Godot's script editor, mark methods that signals in the edited scene

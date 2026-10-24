@@ -191,16 +191,21 @@ func _test_view_drop() -> void:
 	print("view drop")
 	var view := NvimView.new()
 	view.nvim_path = _nvim_path()
-	view.nvim_args = PackedStringArray(["--clean", "-n"])
+	view.nvim_args = PackedStringArray(["--clean", "-u", ProjectSettings.globalize_path("res://tests/fixtures/init.lua"), "-n"])
 	var cwd := OS.get_cache_dir().path_join("godot nvim cwd")
 	DirAccess.make_dir_recursive_absolute(cwd)
 	view.working_dir = cwd
 	view.size = Vector2(800, 400)
 	root.add_child(view)
+	# Like the plugin, send colors on attach: before the user's config runs
+	# (fixtures/init.lua, which resets 'runtimepath' and sets a colorscheme).
+	view.attached_to_nvim.connect(func(): view.set_colorscheme({"background_color": "#202830", "dark": true}))
 	check(view.start() == OK, "view starts nvim")
 	check(await _wait(func(): return view.attached and view.grid.height > 0), "view attached")
 	var got_cwd: Array = view.rpc.request_sync("nvim_call_function", ["getcwd", []])
 	check(got_cwd[1] == cwd, "working dir with a space: %s" % [got_cwd])
+	var first: Array = await _req(view, "nvim_exec_lua", ["return {vim.g.colors_name, vim.api.nvim_get_hl(0, {name = 'Normal'}).bg}", []])
+	check(first[1] == ["godot", 0x202830], "colors sent on attach win over the user's config: %s" % [first])
 	var path := OS.get_cache_dir().path_join("godot_nvim_test.gd")
 	FileAccess.open(path, FileAccess.WRITE).store_string("extends Node\n\nfunc _ready():\n    pass\n")
 	view.open_file(path)
@@ -244,6 +249,12 @@ func _test_view_drop() -> void:
 	check(marks[1].size() == 2 and marks[1][1][0] == 6, "sign follows a new override: %s" % [marks])
 	view.rpc.request("nvim_buf_set_lines", [0, -4, -1, false, []])
 	view.set_overrides(path, {})
+	# The "godot" colorscheme from the editor's colors.
+	view.set_colorscheme({"background_color": "#1a1a1a", "text_color": "#c0c0c0", "keyword_color": "#ff7085",
+		"breakpoint_color": "#ff7869", "gdscript/annotation_color": "#ffb373", "dark": true})
+	var hl: Array = await _req(view, "nvim_exec_lua", ["local h = function(n) return vim.api.nvim_get_hl(0, {name = n, link = false}) end return {vim.g.colors_name, h('Normal').bg, h('Keyword').fg, h('PreProc').fg, h('GodotBreakpoint').fg, h('GodotMethodOverride').fg ~= nil, vim.o.background}", []])
+	check(hl[1] == ["godot", 0x1a1a1a, 0xff7085, 0xffb373, 0xff7869, true, "dark"], "godot colorscheme applied: %s" % [hl])
+	check(await _wait(func(): return view.grid.default_bg == Color("#1a1a1a")), "view background follows the theme: %s" % [view.grid.default_bg])
 	# Drop onto row 2 ("func _ready():") inserts the line above it.
 	view.drop_text_at(Vector2i(3, 2), {"kind": "lines", "text": "@onready var player: Node = $Player\n"})
 	check(await _wait(func(): return view.grid.row_string(2).begins_with("@onready var player")), "onready line inserted at drop row")
