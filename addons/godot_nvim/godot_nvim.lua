@@ -321,6 +321,10 @@ vim.api.nvim_create_autocmd("BufEnter", {
     vim.rpcnotify(chan, "godot_nvim_buf_enter", vim.api.nvim_buf_get_name(ev.buf))
   end,
 })
+-- A file Godot opened before this script loaded entered without us.
+if vim.api.nvim_buf_get_name(0) ~= "" then
+  vim.rpcnotify(chan, "godot_nvim_buf_enter", vim.api.nvim_buf_get_name(0))
+end
 
 -- Attaches Godot's language server to [buf], unless the user's own config
 -- already handles gdscript. Scheduled so that config's FileType handlers
