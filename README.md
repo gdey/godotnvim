@@ -47,7 +47,10 @@ Neovim starts in the project folder and loads your usual config.
   Breakpoints** is on, the signs turn grey (`GodotBreakpointSkipped`, linked
   to `Comment`).
 - `F9` (Godot's key) or `:GodotToggleBreakpoint` toggles a breakpoint on the
-  cursor line. If you already map `F9`, the plugin leaves your mapping alone.
+  cursor line, and double-clicking the gutter (sign or number column) toggles
+  one on the clicked line. If you already map `F9` or `<2-LeftMouse>`, the
+  plugin leaves your mapping alone. So there's always a gutter to click,
+  GDScript buffers get `signcolumn=yes` when yours is the default `auto`.
 - Signs move with your edits. On `:w`, Godot's breakpoints move to match.
 - Double-clicking a breakpoint, an error or a stack frame in the debugger
   opens the file in Neovim at that line.

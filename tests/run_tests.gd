@@ -199,13 +199,31 @@ func _test_view_drop() -> void:
 	var path := OS.get_cache_dir().path_join("godot_nvim_test.gd")
 	FileAccess.open(path, FileAccess.WRITE).store_string("extends Node\n\nfunc _ready():\n    pass\n")
 	view.open_file(path)
-	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "file shown in grid")
+	check(await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node")), "file shown in grid")
 	# Signal connections: a sign on the connected func, a warning for a missing one.
 	view.set_connections(path, [
 		{"method": "_ready", "signal": "pressed", "source": "Button", "target": "Main", "missing": false},
 		{"method": "_gone", "signal": "toggled", "source": "Button", "target": "Main", "missing": true}])
 	var marks: Array = await _req(view, "nvim_exec_lua", ["local ns = vim.api.nvim_get_namespaces() local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns.godot_nvim_slots, 0, -1, {})) do table.insert(r, m[2] + 1) end return {r, #vim.diagnostic.get(0, {namespace = ns.godot_nvim_missing_methods})}", []])
 	check(marks[1] == [[3], 1], "slot sign on func _ready, one missing-method warning: %s" % [marks])
+	# Double-clicking the gutter on row 2 ("func _ready():") asks Godot to set
+	# a breakpoint on line 3; a double-click in the text doesn't.
+	var bp_reqs := []
+	view.breakpoint_requested.connect(func(p, l, on): bp_reqs.append([l, on]))
+	for i in 2:
+		view.rpc.request("nvim_input_mouse", ["left", "press", "", 0, 2, 0])
+		view.rpc.request("nvim_input_mouse", ["left", "release", "", 0, 2, 0])
+	check(await _wait(func(): return bp_reqs.size() > 0), "gutter double-click requests a breakpoint")
+	check(bp_reqs == [[3, true]], "breakpoint on line 3: %s" % [bp_reqs])
+	await create_timer(0.6).timeout
+	for i in 2:
+		view.rpc.request("nvim_input_mouse", ["left", "press", "", 0, 2, 8])
+		view.rpc.request("nvim_input_mouse", ["left", "release", "", 0, 2, 8])
+	await create_timer(0.5).timeout
+	check(bp_reqs.size() == 1, "double-click in the text doesn't toggle: %s" % [bp_reqs])
+	view.rpc.request("nvim_input", ["<Esc>"])
+	# The rest of the test counts cells from the left edge.
+	view.rpc.request("nvim_command", ["setlocal signcolumn=no"])
 	# Overrides: their own sign, and a combined one on a connected override.
 	var signs_lua := "local ns = vim.api.nvim_get_namespaces() local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns.godot_nvim_slots, 0, -1, {details = true})) do table.insert(r, {m[2] + 1, vim.trim(m[4].sign_text), m[4].sign_hl_group}) end return r"
 	view.set_overrides(path, {"_ready": "Node", "_process": "Node"})
@@ -241,9 +259,9 @@ func _test_view_drop() -> void:
 	var path2 := OS.get_cache_dir().path_join("godot_nvim_test2.gd")
 	FileAccess.open(path2, FileAccess.WRITE).store_string("extends Node2D\n")
 	view.open_file(path2)
-	await _wait(func(): return view.grid.row_string(0).begins_with("extends Node2D"))
+	await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node2D"))
 	view.rpc.request("nvim_input", [":q<CR>"])
-	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node ")), ":q shows the previous file")
+	check(await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node ")), ":q shows the previous file")
 	var bufs: Array = await _req(view, "nvim_exec_lua", ["return {#vim.fn.getbufinfo({buflisted = 1}), #vim.api.nvim_list_bufs(), vim.fn.bufexists(...) == 1 and vim.fn.buflisted(vim.fn.bufnr(...)) == 1}", [path2]])
 	check(view.rpc.pid == pid and view.rpc.is_running(), ":q keeps nvim running")
 	check(bufs[1][2] == false, ":q removed the quit buffer from the list: %s" % [bufs])
@@ -255,12 +273,12 @@ func _test_view_drop() -> void:
 	check(after[1][0] == 0 and after[1][2] == 1, "no listed buffers left, one window: %s" % [after])
 	check(after[1][1] <= bufs[1][1], "no buffers piled up (%s -> %s)" % [bufs[1][1], after[1][1]])
 	view.open_file(path)
-	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "file reopens after :wq")
+	check(await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node")), "file reopens after :wq")
 	# :qa! really exits; the view restarts Neovim on the last file.
 	view.open_file(path)
-	await _wait(func(): return view.grid.row_string(0).begins_with("extends Node"))
+	await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node"))
 	view.rpc.request("nvim_input", [":qa!<CR>"])
 	check(await _wait(func(): return view.rpc.pid != pid and view.attached), "restarts after :qa!")
-	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "last file reopened after restart")
+	check(await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node")), "last file reopened after restart")
 	view.stop()
 	view.queue_free()

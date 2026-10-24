@@ -134,14 +134,28 @@ function M.buf_breakpoints(buf)
   return lines
 end
 
-function M.toggle_breakpoint()
-  local buf = vim.api.nvim_get_current_buf()
-  local line = vim.api.nvim_win_get_cursor(0)[1]
+-- Toggles the breakpoint on [line] of [buf], by default the cursor line.
+function M.toggle_breakpoint(buf, line)
+  buf = buf or vim.api.nvim_get_current_buf()
+  line = line or vim.api.nvim_win_get_cursor(0)[1]
   local enabled = not vim.tbl_contains(M.buf_breakpoints(buf), line)
   vim.rpcnotify(chan, "godot_nvim_set_breakpoint", vim.api.nvim_buf_get_name(buf), line, enabled)
 end
 
-vim.api.nvim_create_user_command("GodotToggleBreakpoint", M.toggle_breakpoint,
+-- Expr mapping for <2-LeftMouse>: a double-click in the gutter (sign,
+-- number and fold columns) toggles the breakpoint on that line; anywhere
+-- else keeps the usual double-click.
+function M.gutter_double_click()
+  local pos = vim.fn.getmousepos()
+  local info = pos.winid ~= 0 and vim.fn.getwininfo(pos.winid)[1]
+  if info and pos.line > 0 and pos.wincol <= info.textoff then
+    M.toggle_breakpoint(vim.api.nvim_win_get_buf(pos.winid), pos.line)
+    return ""
+  end
+  return "<2-LeftMouse>"
+end
+
+vim.api.nvim_create_user_command("GodotToggleBreakpoint", function() M.toggle_breakpoint() end,
   { desc = "Toggle a Godot debugger breakpoint on the cursor line" })
 
 -- Signal connections and overrides ---------------------------------------
@@ -309,7 +323,17 @@ vim.api.nvim_create_autocmd("FileType", {
   callback = function(ev)
     -- F9 toggles breakpoints in Godot's editor too; keep the user's own F9.
     if vim.fn.maparg("<F9>", "n") == "" then
-      vim.keymap.set("n", "<F9>", M.toggle_breakpoint, { buffer = ev.buf, desc = "Toggle Godot breakpoint" })
+      vim.keymap.set("n", "<F9>", function() M.toggle_breakpoint() end,
+        { buffer = ev.buf, desc = "Toggle Godot breakpoint" })
+    end
+    if vim.fn.maparg("<2-LeftMouse>", "n") == "" then
+      vim.keymap.set("n", "<2-LeftMouse>", M.gutter_double_click,
+        { buffer = ev.buf, expr = true, desc = "Toggle Godot breakpoint from the gutter" })
+    end
+    -- Keep a gutter to click, as Godot's editor does, unless the user chose
+    -- otherwise.
+    if vim.opt_local.signcolumn:get() == "auto" then
+      vim.opt_local.signcolumn = "yes"
     end
   end,
 })
