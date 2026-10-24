@@ -135,7 +135,8 @@ const _TEXT_CLASSES := ["Script", "Shader", "ShaderInclude", "JSON", "TextFile"]
 ## File-backed text resources. Built-in ones (path contains "::") stay in
 ## Godot's editors since Neovim can't open them.
 func _handles(object: Object) -> bool:
-	if not _TEXT_CLASSES.any(func(c: String) -> bool: return object.is_class(c)):
+	# The editor passes null when it clears what's being edited.
+	if not is_instance_valid(object) or not _TEXT_CLASSES.any(func(c: String) -> bool: return object.is_class(c)):
 		return false
 	var path: String = object.resource_path
 	return path != "" and not path.contains("::")
