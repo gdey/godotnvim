@@ -152,8 +152,14 @@ vim.api.nvim_create_user_command("GodotToggleBreakpoint", M.toggle_breakpoint,
 
 local slot_ns = vim.api.nvim_create_namespace("godot_nvim_slots")
 local missing_ns = vim.api.nvim_create_namespace("godot_nvim_missing_methods")
-vim.api.nvim_set_hl(0, "GodotSignalSlot", { default = true, link = "DiagnosticOk" })
-vim.api.nvim_set_hl(0, "GodotMethodOverride", { default = true, link = "DiagnosticInfo" })
+-- Godot's own icon colors, so the signs stand out whatever the colorscheme.
+-- `default` lets a colorscheme or config define the groups instead.
+local function define_method_highlights()
+  vim.api.nvim_set_hl(0, "GodotSignalSlot", { default = true, fg = "#5fff97", ctermfg = 84, bold = true })
+  vim.api.nvim_set_hl(0, "GodotMethodOverride", { default = true, fg = "#5fb2ff", ctermfg = 75, bold = true })
+end
+define_method_highlights()
+vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = define_method_highlights })
 
 -- absolute path -> list of { method, signal, source, target, missing }
 M.connections = {}
@@ -212,11 +218,11 @@ local function apply_method_signs(buf)
   for l, s in pairs(signs) do
     local text, hl
     if s.slot and s.override then
-      text, hl = vim.g.godot_nvim_override_slot_sign or "⇡⇠", "GodotSignalSlot"
+      text, hl = vim.g.godot_nvim_override_slot_sign or "↱⇠", "GodotSignalSlot"
     elseif s.slot then
       text, hl = vim.g.godot_nvim_slot_sign or "⇠", "GodotSignalSlot"
     else
-      text, hl = vim.g.godot_nvim_override_sign or "⇡", "GodotMethodOverride"
+      text, hl = vim.g.godot_nvim_override_sign or "↱", "GodotMethodOverride"
     end
     vim.api.nvim_buf_set_extmark(buf, slot_ns, l - 1, 0, {
       sign_text = text,

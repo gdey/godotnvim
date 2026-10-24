@@ -210,10 +210,10 @@ func _test_view_drop() -> void:
 	var signs_lua := "local ns = vim.api.nvim_get_namespaces() local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns.godot_nvim_slots, 0, -1, {details = true})) do table.insert(r, {m[2] + 1, vim.trim(m[4].sign_text), m[4].sign_hl_group}) end return r"
 	view.set_overrides(path, {"_ready": "Node", "_process": "Node"})
 	marks = await _req(view, "nvim_exec_lua", [signs_lua, []])
-	check(marks[1] == [[3, "⇡⇠", "GodotSignalSlot"]], "combined sign on connected override: %s" % [marks])
+	check(marks[1] == [[3, "↱⇠", "GodotSignalSlot"]], "combined sign on connected override: %s" % [marks])
 	view.set_connections(path, [])
 	marks = await _req(view, "nvim_exec_lua", [signs_lua, []])
-	check(marks[1] == [[3, "⇡", "GodotMethodOverride"]], "override sign on func _ready: %s" % [marks])
+	check(marks[1] == [[3, "↱", "GodotMethodOverride"]], "override sign on func _ready: %s" % [marks])
 	# A newly typed override gets its sign on the next edit.
 	view.rpc.request("nvim_buf_set_lines", [0, -1, -1, false, ["", "func _process(delta):", "    pass"]])
 	view.rpc.request("nvim_exec_autocmds", ["TextChanged", {"buffer": 0}])

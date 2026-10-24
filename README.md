@@ -57,11 +57,14 @@ Neovim starts in the project folder and loads your usual config.
 Like Godot's script editor, the sign column marks methods:
 
 - `⇠` on a method that a signal in the edited scene is connected to
-  (highlight `GodotSignalSlot`, linked to `DiagnosticOk`).
-- `⇡` on a method that overrides one from a base class, such as `_ready()` or
-  a method of a base script (highlight `GodotMethodOverride`, linked to
-  `DiagnosticInfo`).
-- `⇡⇠` when both apply.
+  (highlight `GodotSignalSlot`, green).
+- `↱` on a method that overrides one from a base class, such as `_ready()` or
+  a method of a base script (highlight `GodotMethodOverride`, blue).
+- `↱⇠` when both apply.
+
+The colors are the ones Godot's own icons use. To restyle them, define the
+highlight groups in your config, for example
+`vim.api.nvim_set_hl(0, "GodotMethodOverride", { fg = "#ffcc00", bold = true })`.
 
 Change the glyphs with `vim.g.godot_nvim_slot_sign`,
 `vim.g.godot_nvim_override_sign` and `vim.g.godot_nvim_override_slot_sign`.
