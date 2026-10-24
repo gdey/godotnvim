@@ -191,5 +191,22 @@ func _test_view_drop() -> void:
 	var saved := []
 	view.file_saved.connect(func(p, _bps): saved.append(p))
 	check(await _wait(func(): return saved.size() > 0), "save notification")
+	# :q / :wq on the last window close the file but keep Neovim alive.
+	var pid := view.rpc.pid
+	view.rpc.request("nvim_input", [":wq<CR>"])
+	await create_timer(0.5).timeout
+	view.rpc.poll()
+	check(view.rpc.pid == pid and view.rpc.is_running(), ":wq keeps nvim running")
+	view.open_file(path)
+	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "file reopens after :wq")
+	view.rpc.request("nvim_input", [":q<CR>"])
+	await create_timer(0.5).timeout
+	check(view.rpc.pid == pid and view.rpc.is_running(), ":q keeps nvim running")
+	# :qa! really exits; the view restarts Neovim on the last file.
+	view.open_file(path)
+	await _wait(func(): return view.grid.row_string(0).begins_with("extends Node"))
+	view.rpc.request("nvim_input", [":qa!<CR>"])
+	check(await _wait(func(): return view.rpc.pid != pid and view.attached), "restarts after :qa!")
+	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "last file reopened after restart")
 	view.stop()
 	view.queue_free()

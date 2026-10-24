@@ -10,6 +10,39 @@ _G.godot_nvim = M
 
 local group = vim.api.nvim_create_augroup("godot_nvim", { clear = true })
 
+-- Quitting -----------------------------------------------------------------
+-- Neovim lives as long as the Godot editor. :q / :wq / :x on the last window
+-- would exit it, so give the quit another window to leave behind: QuitPre
+-- runs before Neovim decides whether the window is the last one.
+
+local function normal_wins()
+  return vim.tbl_filter(function(w)
+    return vim.api.nvim_win_get_config(w).relative == ""
+  end, vim.api.nvim_tabpage_list_wins(0))
+end
+
+vim.api.nvim_create_autocmd("QuitPre", {
+  group = group,
+  callback = function()
+    local win = vim.api.nvim_get_current_win()
+    if vim.api.nvim_win_get_config(win).relative ~= "" then
+      return
+    end
+    if #vim.api.nvim_list_tabpages() > 1 or #normal_wins() > 1 then
+      return
+    end
+    vim.cmd("rightbelow vnew")
+    local spare = vim.api.nvim_get_current_win()
+    vim.api.nvim_set_current_win(win)
+    -- If the quit is refused (E37, unsaved changes), drop the spare window.
+    vim.schedule(function()
+      if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_is_valid(spare) then
+        vim.api.nvim_win_close(spare, true)
+      end
+    end)
+  end,
+})
+
 -- Breakpoints --------------------------------------------------------------
 -- Godot owns the breakpoint list; it pushes it here with set_breakpoints and
 -- we draw it as signs. Signs are extmarks, so they follow edits; on save we

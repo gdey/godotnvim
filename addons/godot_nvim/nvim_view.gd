@@ -24,6 +24,8 @@ signal nvim_exited
 ## Godot's GDScript language server; port 0 leaves LSP to the user's config.
 @export var lsp_host := "127.0.0.1"
 @export var lsp_port := 0
+## Start Neovim again (on the last file) if it exits on its own, e.g. :qa.
+@export var auto_restart := true
 
 ## Callable(data: Variant, modifier: bool) -> Dictionary returning what
 ## [method DropText.build] returns. Unset means drops are refused.
@@ -37,6 +39,9 @@ var _cell := Vector2(8, 16)
 var _ascent := 12.0
 var _fonts := {}  # "b"/"i"/"bi" -> Font
 var _mouse_button := ""
+## Last file shown, reopened after a restart.
+var _last_file := ""
+var _restarting := false
 var _last_mouse_cell := Vector2i(-1, -1)
 
 
@@ -87,6 +92,7 @@ func open_file(path: String, line := 0, column := 0) -> void:
 	if not rpc.is_running():
 		start()
 	var abs_path := ProjectSettings.globalize_path(path)
+	_last_file = abs_path
 	rpc.request("nvim_exec_lua", [
 		"local p, l, c = ... vim.cmd.drop(vim.fn.fnameescape(p))" +
 		" if l > 0 then pcall(vim.api.nvim_win_set_cursor, 0, {l, math.max(c - 1, 0)}) vim.cmd('normal! zz') end",
@@ -125,6 +131,9 @@ func _on_api_info(err: Variant, res: Variant) -> void:
 	rpc.request("nvim_ui_attach", [dims.x, dims.y, {"ext_linegrid": true, "rgb": true}])
 	attached = true
 	attached_to_nvim.emit()
+	if _restarting and _last_file != "":
+		open_file(_last_file)
+	_restarting = false
 
 
 func _on_notification(method: String, params: Array) -> void:
@@ -136,6 +145,8 @@ func _on_notification(method: String, params: Array) -> void:
 		"godot_nvim_set_breakpoint":
 			breakpoint_requested.emit(ProjectSettings.localize_path(params[0]), params[1], params[2])
 		"godot_nvim_buf_enter":
+			if params[0] != "":
+				_last_file = params[0]
 			buffer_entered.emit(ProjectSettings.localize_path(params[0]))
 
 
@@ -143,6 +154,9 @@ func _on_exited() -> void:
 	attached = false
 	nvim_exited.emit()
 	queue_redraw()
+	if auto_restart and is_inside_tree():
+		_restarting = true
+		start()
 
 
 func _notification(what: int) -> void:
