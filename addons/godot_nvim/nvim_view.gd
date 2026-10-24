@@ -11,6 +11,8 @@ signal attached_to_nvim
 ## [param breakpoints]: the buffer's 1-based breakpoint lines at save time.
 signal file_saved(path: String, breakpoints: Array)
 signal buffer_entered(path: String)
+## res:// (or absolute) paths of buffers with unsaved changes.
+signal modified_changed(paths: PackedStringArray)
 ## The user toggled a breakpoint in Neovim; [param line] is 1-based.
 signal breakpoint_requested(path: String, line: int, enabled: bool)
 signal nvim_exited
@@ -72,7 +74,10 @@ func start() -> Error:
 		return OK
 	var args := PackedStringArray()
 	if working_dir != "":
-		args.append_array(["--cmd", "cd " + _fnameescape(working_dir)])
+		# Through the environment, so no quoting rules (Windows backslashes,
+		# spaces) can mangle the path.
+		OS.set_environment("GODOT_NVIM_CWD", working_dir)
+		args.append_array(["--cmd", "lua vim.fn.chdir(vim.env.GODOT_NVIM_CWD)"])
 	args.append_array(nvim_args)
 	var err := rpc.start(nvim_path, args)
 	if err != OK:
@@ -94,10 +99,16 @@ func open_file(path: String, line := 0, column := 0) -> void:
 	var abs_path := ProjectSettings.globalize_path(path)
 	_last_file = abs_path
 	rpc.request("nvim_exec_lua", [
-		"local p, l, c = ... vim.cmd.drop(vim.fn.fnameescape(p))" +
+		"local p, l, c = ... vim.cmd.drop(vim.fn.fnameescape(vim.fn.fnamemodify(p, ':~:.')))" +
 		" if l > 0 then pcall(vim.api.nvim_win_set_cursor, 0, {l, math.max(c - 1, 0)}) vim.cmd('normal! zz') end",
 		[abs_path, line, column]])
 	grab_focus()
+
+
+## Writes every modified buffer, waiting for Neovim to finish.
+func save_all() -> void:
+	if attached:
+		rpc.request_sync("nvim_command", ["silent! wall"])
 
 
 ## Shows [param lines] (1-based) as breakpoint signs in [param path]'s buffer.
@@ -142,6 +153,11 @@ func _on_notification(method: String, params: Array) -> void:
 			grid.apply(params)
 		"godot_nvim_saved":
 			file_saved.emit(ProjectSettings.localize_path(params[0]), params[1] if params.size() > 1 else [])
+		"godot_nvim_modified":
+			var paths := PackedStringArray()
+			for p in params[0]:
+				paths.append(ProjectSettings.localize_path(p))
+			modified_changed.emit(paths)
 		"godot_nvim_set_breakpoint":
 			breakpoint_requested.emit(ProjectSettings.localize_path(params[0]), params[1], params[2])
 		"godot_nvim_buf_enter":
@@ -246,7 +262,12 @@ func _draw_row(r: int) -> void:
 			draw_rect(Rect2(x, y, w, _cell.y), cols[1])
 		var a := grid.attr(id)
 		if s.strip_edges() != "":
-			draw_string(_font_for(a), Vector2(x, y + _ascent), s, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, cols[0])
+			# One glyph per cell: bold/italic variants and fractional advances
+			# would otherwise drift off the grid over a run.
+			var f := _font_for(a)
+			for i in range(start, c):
+				if t[i] != "" and t[i] != " ":
+					draw_string(f, Vector2(i * _cell.x, y + _ascent), t[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, cols[0])
 		_draw_decorations(a, cols, x, y, w)
 
 
@@ -387,7 +408,3 @@ func drop_text_at(cell: Vector2i, res: Dictionary) -> void:
 	# One Lua call: nvim_input is a "fast" API that Neovim acts on before
 	# queued requests, so sending the payload separately would race the input.
 	rpc.request("nvim_exec_lua", ["godot_nvim.queue_drop(...)", [res["kind"], res["text"], cell.y, cell.x]])
-
-
-static func _fnameescape(p: String) -> String:
-	return p.replace("\\", "\\\\").replace(" ", "\\ ")

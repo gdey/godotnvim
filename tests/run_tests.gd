@@ -169,10 +169,15 @@ func _test_view_drop() -> void:
 	var view := NvimView.new()
 	view.nvim_path = _nvim_path()
 	view.nvim_args = PackedStringArray(["--clean", "-n"])
+	var cwd := OS.get_cache_dir().path_join("godot nvim cwd")
+	DirAccess.make_dir_recursive_absolute(cwd)
+	view.working_dir = cwd
 	view.size = Vector2(800, 400)
 	root.add_child(view)
 	check(view.start() == OK, "view starts nvim")
 	check(await _wait(func(): return view.attached and view.grid.height > 0), "view attached")
+	var got_cwd: Array = view.rpc.request_sync("nvim_call_function", ["getcwd", []])
+	check(got_cwd[1] == cwd, "working dir with a space: %s" % [got_cwd])
 	var path := OS.get_cache_dir().path_join("godot_nvim_test.gd")
 	FileAccess.open(path, FileAccess.WRITE).store_string("extends Node\n\nfunc _ready():\n    pass\n")
 	view.open_file(path)
@@ -208,5 +213,19 @@ func _test_view_drop() -> void:
 	view.rpc.request("nvim_input", [":qa!<CR>"])
 	check(await _wait(func(): return view.rpc.pid != pid and view.attached), "restarts after :qa!")
 	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "last file reopened after restart")
+	# Unsaved buffers are reported, and save_all writes them.
+	var modified := []
+	view.modified_changed.connect(func(paths): modified.append(paths))
+	view.rpc.request("nvim_buf_set_lines", [0, 0, 0, false, ["# edited"]])
+	check(await _wait(func(): return modified.size() > 0 and modified[-1].size() == 1), "modified buffer reported")
+	view.save_all()
+	check(FileAccess.get_file_as_string(path).begins_with("# edited"), "save_all wrote the buffer")
+	check(await _wait(func(): return modified.size() > 0 and modified[-1].is_empty()), "no unsaved buffers after save")
+	# A clean stop removes Neovim's swap file.
+	view.rpc.request("nvim_buf_set_lines", [0, 0, 0, false, ["# unsaved"]])
+	var swap: Array = view.rpc.request_sync("nvim_eval", ["swapname('%')"])
+	var had_swap: bool = swap[0] == null and swap[1] != "" and FileAccess.file_exists(swap[1])
 	view.stop()
+	if had_swap:
+		check(not FileAccess.file_exists(swap[1]), "swap file removed on stop")
 	view.queue_free()

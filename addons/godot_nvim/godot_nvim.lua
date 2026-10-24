@@ -10,6 +10,33 @@ _G.godot_nvim = M
 
 local group = vim.api.nvim_create_augroup("godot_nvim", { clear = true })
 
+-- Buffer names with forward slashes, as Godot writes paths (matters on Windows).
+local function bufname(buf)
+  local name = vim.api.nvim_buf_get_name(buf)
+  return name == "" and name or vim.fs.normalize(name)
+end
+
+-- Unsaved buffers, so Godot can offer to save them when it closes.
+local function modified_files()
+  local out = {}
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    local name = bufname(buf)
+    if name ~= "" and vim.bo[buf].buflisted and vim.bo[buf].modified then
+      table.insert(out, name)
+    end
+  end
+  return out
+end
+
+vim.api.nvim_create_autocmd({ "BufModifiedSet", "BufWritePost", "BufDelete" }, {
+  group = group,
+  callback = function()
+    vim.schedule(function()
+      vim.rpcnotify(chan, "godot_nvim_modified", modified_files())
+    end)
+  end,
+})
+
 -- Quitting -----------------------------------------------------------------
 -- Neovim lives as long as the Godot editor. :q / :wq / :x on the last window
 -- would exit it, so give the quit another window to leave behind: QuitPre
@@ -63,7 +90,7 @@ local function apply_breakpoints(buf)
   end
   vim.api.nvim_buf_clear_namespace(buf, bp_ns, 0, -1)
   local count = vim.api.nvim_buf_line_count(buf)
-  for _, l in ipairs(M.breakpoints[vim.api.nvim_buf_get_name(buf)] or {}) do
+  for _, l in ipairs(M.breakpoints[bufname(buf)] or {}) do
     if l >= 1 and l <= count then
       vim.api.nvim_buf_set_extmark(buf, bp_ns, l - 1, 0, {
         sign_text = "●",
@@ -74,9 +101,10 @@ local function apply_breakpoints(buf)
 end
 
 function M.set_breakpoints(path, lines)
+  path = vim.fs.normalize(path)
   M.breakpoints[path] = lines
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_get_name(buf) == path then
+    if bufname(buf) == path then
       apply_breakpoints(buf)
     end
   end
@@ -107,7 +135,7 @@ function M.toggle_breakpoint()
   local buf = vim.api.nvim_get_current_buf()
   local line = vim.api.nvim_win_get_cursor(0)[1]
   local enabled = not vim.tbl_contains(M.buf_breakpoints(buf), line)
-  vim.rpcnotify(chan, "godot_nvim_set_breakpoint", vim.api.nvim_buf_get_name(buf), line, enabled)
+  vim.rpcnotify(chan, "godot_nvim_set_breakpoint", bufname(buf), line, enabled)
 end
 
 vim.api.nvim_create_user_command("GodotToggleBreakpoint", M.toggle_breakpoint,
@@ -134,14 +162,14 @@ vim.api.nvim_create_autocmd("FileType", {
 vim.api.nvim_create_autocmd("BufWritePost", {
   group = group,
   callback = function(ev)
-    vim.rpcnotify(chan, "godot_nvim_saved", vim.api.nvim_buf_get_name(ev.buf), M.buf_breakpoints(ev.buf))
+    vim.rpcnotify(chan, "godot_nvim_saved", bufname(ev.buf), M.buf_breakpoints(ev.buf))
   end,
 })
 
 vim.api.nvim_create_autocmd("BufEnter", {
   group = group,
   callback = function(ev)
-    vim.rpcnotify(chan, "godot_nvim_buf_enter", vim.api.nvim_buf_get_name(ev.buf))
+    vim.rpcnotify(chan, "godot_nvim_buf_enter", bufname(ev.buf))
   end,
 })
 

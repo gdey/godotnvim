@@ -1,0 +1,25 @@
+# Neovim Script Editor for Godot
+
+Edit GDScript, shaders and other text files in an embedded Neovim, drawn
+inside the Godot editor with Neovim's UI protocol.
+
+- Scripts, shaders, JSON and plain text files open in a **Neovim** main-screen tab.
+- Drag nodes from the Scene dock to insert `$Path` (Ctrl/Cmd: `@onready var`),
+  or files from the FileSystem dock to insert paths (Ctrl/Cmd: `preload`).
+- GDScript language server is connected: hover docs, definitions, completion.
+- Debugger breakpoints show as signs; toggle them with `F9`. Debugger
+  double-clicks jump to the line.
+
+## Requirements
+
+Neovim 0.9 or newer, installed separately. The plugin looks in
+`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` and the default Windows
+install folder, then your `PATH`. Set another path in Editor Settings →
+`godot_nvim/nvim_path`.
+
+## Install
+
+Copy this folder to `res://addons/godot_nvim/` (the Asset Library does this
+for you), then enable **Neovim Script Editor** in Project Settings → Plugins.
+
+Full documentation: https://github.com/gdey/godotnvim
