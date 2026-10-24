@@ -11,6 +11,7 @@ func _init() -> void:
 	_test_msgpack()
 	_test_keys()
 	_test_drop_text()
+	_test_overrides()
 	await _test_embed()
 	await _test_view_drop()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
@@ -155,6 +156,20 @@ func _test_drop_text() -> void:
 	main.queue_free()
 
 
+func _test_overrides() -> void:
+	var base_path := "user://godot_nvim_test_base.gd"
+	FileAccess.open(base_path, FileAccess.WRITE).store_string("extends CharacterBody2D\nfunc hit():\n\tpass\n")
+	var s := GDScript.new()
+	s.source_code = "extends \"%s\"\nfunc own():\n\tpass\n" % [base_path]
+	s.reload()
+	var methods: Dictionary = load("res://addons/godot_nvim/plugin.gd").overridable_methods(s)
+	check(methods.get("_ready") == "Node", "_ready comes from Node: %s" % [methods.get("_ready")])
+	check(methods.get("_physics_process") == "Node", "_physics_process from Node")
+	check(methods.get("move_and_slide") == "CharacterBody2D", "move_and_slide from CharacterBody2D")
+	check(methods.get("hit") == base_path, "hit from the base script: %s" % [methods.get("hit")])
+	check(not methods.has("own"), "the script's own methods aren't overrides")
+
+
 func _wait(cond: Callable, ms := 3000) -> bool:
 	var deadline := Time.get_ticks_msec() + ms
 	while Time.get_ticks_msec() < deadline:
@@ -184,7 +199,46 @@ func _test_view_drop() -> void:
 	var path := OS.get_cache_dir().path_join("godot_nvim_test.gd")
 	FileAccess.open(path, FileAccess.WRITE).store_string("extends Node\n\nfunc _ready():\n    pass\n")
 	view.open_file(path)
-	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "file shown in grid")
+	check(await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node")), "file shown in grid")
+	# Signal connections: a sign on the connected func, a warning for a missing one.
+	view.set_connections(path, [
+		{"method": "_ready", "signal": "pressed", "source": "Button", "target": "Main", "missing": false},
+		{"method": "_gone", "signal": "toggled", "source": "Button", "target": "Main", "missing": true}])
+	var marks: Array = await _req(view, "nvim_exec_lua", ["local ns = vim.api.nvim_get_namespaces() local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns.godot_nvim_slots, 0, -1, {})) do table.insert(r, m[2] + 1) end return {r, #vim.diagnostic.get(0, {namespace = ns.godot_nvim_missing_methods})}", []])
+	check(marks[1] == [[3], 1], "slot sign on func _ready, one missing-method warning: %s" % [marks])
+	# Double-clicking the gutter on row 2 ("func _ready():") asks Godot to set
+	# a breakpoint on line 3; a double-click in the text doesn't.
+	var bp_reqs := []
+	view.breakpoint_requested.connect(func(p, l, on): bp_reqs.append([l, on]))
+	for i in 2:
+		view.rpc.request("nvim_input_mouse", ["left", "press", "", 0, 2, 0])
+		view.rpc.request("nvim_input_mouse", ["left", "release", "", 0, 2, 0])
+	check(await _wait(func(): return bp_reqs.size() > 0), "gutter double-click requests a breakpoint")
+	check(bp_reqs == [[3, true]], "breakpoint on line 3: %s" % [bp_reqs])
+	await create_timer(0.6).timeout
+	for i in 2:
+		view.rpc.request("nvim_input_mouse", ["left", "press", "", 0, 2, 8])
+		view.rpc.request("nvim_input_mouse", ["left", "release", "", 0, 2, 8])
+	await create_timer(0.5).timeout
+	check(bp_reqs.size() == 1, "double-click in the text doesn't toggle: %s" % [bp_reqs])
+	view.rpc.request("nvim_input", ["<Esc>"])
+	# The rest of the test counts cells from the left edge.
+	view.rpc.request("nvim_command", ["setlocal signcolumn=no"])
+	# Overrides: their own sign, and a combined one on a connected override.
+	var signs_lua := "local ns = vim.api.nvim_get_namespaces() local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns.godot_nvim_slots, 0, -1, {details = true})) do table.insert(r, {m[2] + 1, vim.trim(m[4].sign_text), m[4].sign_hl_group}) end return r"
+	view.set_overrides(path, {"_ready": "Node", "_process": "Node"})
+	marks = await _req(view, "nvim_exec_lua", [signs_lua, []])
+	check(marks[1] == [[3, "↱⇠", "GodotSignalSlot"]], "combined sign on connected override: %s" % [marks])
+	view.set_connections(path, [])
+	marks = await _req(view, "nvim_exec_lua", [signs_lua, []])
+	check(marks[1] == [[3, "↱", "GodotMethodOverride"]], "override sign on func _ready: %s" % [marks])
+	# A newly typed override gets its sign on the next edit.
+	view.rpc.request("nvim_buf_set_lines", [0, -1, -1, false, ["", "func _process(delta):", "    pass"]])
+	view.rpc.request("nvim_exec_autocmds", ["TextChanged", {"buffer": 0}])
+	marks = await _req(view, "nvim_exec_lua", [signs_lua, []])
+	check(marks[1].size() == 2 and marks[1][1][0] == 6, "sign follows a new override: %s" % [marks])
+	view.rpc.request("nvim_buf_set_lines", [0, -4, -1, false, []])
+	view.set_overrides(path, {})
 	# Drop onto row 2 ("func _ready():") inserts the line above it.
 	view.drop_text_at(Vector2i(3, 2), {"kind": "lines", "text": "@onready var player: Node = $Player\n"})
 	check(await _wait(func(): return view.grid.row_string(2).begins_with("@onready var player")), "onready line inserted at drop row")
@@ -205,9 +259,9 @@ func _test_view_drop() -> void:
 	var path2 := OS.get_cache_dir().path_join("godot_nvim_test2.gd")
 	FileAccess.open(path2, FileAccess.WRITE).store_string("extends Node2D\n")
 	view.open_file(path2)
-	await _wait(func(): return view.grid.row_string(0).begins_with("extends Node2D"))
+	await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node2D"))
 	view.rpc.request("nvim_input", [":q<CR>"])
-	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node ")), ":q shows the previous file")
+	check(await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node ")), ":q shows the previous file")
 	var bufs: Array = await _req(view, "nvim_exec_lua", ["return {#vim.fn.getbufinfo({buflisted = 1}), #vim.api.nvim_list_bufs(), vim.fn.bufexists(...) == 1 and vim.fn.buflisted(vim.fn.bufnr(...)) == 1}", [path2]])
 	check(view.rpc.pid == pid and view.rpc.is_running(), ":q keeps nvim running")
 	check(bufs[1][2] == false, ":q removed the quit buffer from the list: %s" % [bufs])
@@ -219,12 +273,12 @@ func _test_view_drop() -> void:
 	check(after[1][0] == 0 and after[1][2] == 1, "no listed buffers left, one window: %s" % [after])
 	check(after[1][1] <= bufs[1][1], "no buffers piled up (%s -> %s)" % [bufs[1][1], after[1][1]])
 	view.open_file(path)
-	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "file reopens after :wq")
+	check(await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node")), "file reopens after :wq")
 	# :qa! really exits; the view restarts Neovim on the last file.
 	view.open_file(path)
-	await _wait(func(): return view.grid.row_string(0).begins_with("extends Node"))
+	await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node"))
 	view.rpc.request("nvim_input", [":qa!<CR>"])
 	check(await _wait(func(): return view.rpc.pid != pid and view.attached), "restarts after :qa!")
-	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "last file reopened after restart")
+	check(await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node")), "last file reopened after restart")
 	view.stop()
 	view.queue_free()
