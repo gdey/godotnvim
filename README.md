@@ -77,6 +77,21 @@ doesn't have shows up as a warning diagnostic. Signal signs follow the scene
 you're editing and update when you connect or disconnect signals in the Node
 dock; override signs update as you type, and follow `extends` when you save.
 
+## Colors
+
+Neovim uses the script editor's colors: the plugin builds a `godot`
+colorscheme from Editor Settings → `text_editor/theme/highlighting` (syntax,
+treesitter and LSP groups, plus the cursor line, selection, line numbers,
+popup menu and status line). It replaces the colorscheme from your config, and
+follows the editor when you change its colors or pick another text editor
+theme. Translucent Godot colors are blended over the background, since Neovim
+colors can't be translucent.
+
+To keep your own colorscheme, clear Editor Settings →
+`godot_nvim/use_editor_colors` (it takes effect when Neovim restarts, for
+example after restarting the editor). `:colorscheme godot` switches back to the
+editor's colors at any time.
+
 ## Language server
 
 The plugin connects `.gd` buffers to the GDScript language server that the
@@ -128,6 +143,8 @@ vim.api.nvim_create_autocmd("LspAttach", {
 | `nvim_keys.gd` | Turns Godot key events into Neovim key notation |
 | `drop_text.gd` | Builds the text for dropped nodes and files, matching Godot's script editor |
 | `godot_nvim.lua` | Neovim-side helpers: save and buffer notifications, drop insertion |
+| `theme_colors.gd` | Reads the script editor's colors for Neovim's `godot` colorscheme |
+| `nvim/colors/godot.lua` | The `godot` colorscheme (needs the colors from the editor) |
 | `debugger_bridge.gd` | EditorDebuggerPlugin: forwards the debugger's go-to-line and breakpoint events |
 | `plugin.gd` | EditorPlugin: the main-screen tab, opening scripts, editor settings |
 

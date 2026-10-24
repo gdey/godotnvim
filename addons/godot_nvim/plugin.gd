@@ -5,6 +5,7 @@ extends EditorPlugin
 const SETTING_PATH := "godot_nvim/nvim_path"
 const SETTING_ARGS := "godot_nvim/nvim_args"
 const SETTING_LSP := "godot_nvim/connect_lsp"
+const SETTING_THEME := "godot_nvim/use_editor_colors"
 
 ## Where GUI-launched editors usually find nvim; macOS apps don't get the
 ## shell's PATH.
@@ -12,6 +13,7 @@ const _NVIM_CANDIDATES := ["/opt/homebrew/bin/nvim", "/usr/local/bin/nvim", "/us
 	"/snap/bin/nvim", "C:/Program Files/Neovim/bin/nvim.exe"]
 
 const _DebuggerBridge := preload("res://addons/godot_nvim/debugger_bridge.gd")
+const _ThemeColors := preload("res://addons/godot_nvim/theme_colors.gd")
 
 var view: NvimView
 var _current_path := ""
@@ -27,6 +29,8 @@ var _skip_breakpoints := false
 var _sent_connections := []
 var _sent_connections_path := ""
 var _skip_buttons: Array[Button] = []
+## Colors last sent to Neovim.
+var _sent_theme := {}
 
 
 func _enter_tree() -> void:
@@ -54,6 +58,11 @@ func _enter_tree() -> void:
 	scene_changed.connect(func(_root: Node) -> void: _sync_connections(true))
 	view.breakpoint_requested.connect(_set_breakpoint)
 	view.attached_to_nvim.connect(_sync_breakpoints.bind(true))
+	view.attached_to_nvim.connect(_sync_theme.bind(true))
+	es.settings_changed.connect(_sync_theme)
+	# Picking a text editor theme sets its colors only when the editor theme
+	# is rebuilt, after settings_changed and without another one.
+	view.theme_changed.connect(_sync_theme)
 	EditorInterface.get_editor_main_screen().add_child(view)
 	view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	view.hide()
@@ -75,6 +84,9 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	var es := EditorInterface.get_editor_settings()
+	if es.settings_changed.is_connected(_sync_theme):
+		es.settings_changed.disconnect(_sync_theme)
 	if _debugger:
 		remove_debugger_plugin(_debugger)
 		_debugger = null
@@ -205,6 +217,22 @@ func _godot_breakpoints() -> Dictionary:
 	for p in out:
 		out[p].sort()
 	return out
+
+
+# --- Colors ------------------------------------------------------------------
+
+## Gives Neovim the script editor's colors, when they changed or [param force].
+func _sync_theme(force := false) -> void:
+	if view == null or not view.attached:
+		return
+	var es := EditorInterface.get_editor_settings()
+	if not es.get_setting(SETTING_THEME):
+		_sent_theme = {}
+		return
+	var colors := _ThemeColors.from_settings(es)
+	if force or colors != _sent_theme:
+		_sent_theme = colors
+		view.set_colorscheme(colors)
 
 
 # --- Signal connections ------------------------------------------------------
@@ -394,3 +422,7 @@ func _ensure_settings() -> void:
 		es.set_setting(SETTING_LSP, true)
 	es.set_initial_value(SETTING_LSP, true, false)
 	es.add_property_info({"name": SETTING_LSP, "type": TYPE_BOOL})
+	if not es.has_setting(SETTING_THEME):
+		es.set_setting(SETTING_THEME, true)
+	es.set_initial_value(SETTING_THEME, true, false)
+	es.add_property_info({"name": SETTING_THEME, "type": TYPE_BOOL})
