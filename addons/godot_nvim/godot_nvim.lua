@@ -1,6 +1,10 @@
 -- Neovim-side helpers for the godot_nvim plugin. Loaded with nvim_exec_lua,
--- which passes the Godot channel id as the first vararg.
-local chan = ...
+-- which passes the Godot channel id and an options table:
+--   root: project folder
+--   lsp:  { host = ..., port = ... } to attach Godot's GDScript language
+--         server to gdscript buffers, or nil to leave LSP to the user's config
+local chan, opts = ...
+opts = opts or {}
 local M = {}
 _G.godot_nvim = M
 
@@ -20,6 +24,48 @@ vim.api.nvim_create_autocmd("BufEnter", {
   end,
 })
 
+-- Attaches Godot's language server to [buf], unless the user's own config
+-- already handles gdscript. Scheduled so that config's FileType handlers
+-- (vim.lsp.enable, lspconfig) run first and we can see their client.
+function M.lsp_attach(buf)
+  if not opts.lsp then
+    return
+  end
+  vim.schedule(function()
+    if not vim.api.nvim_buf_is_valid(buf) then
+      return
+    end
+    if vim.lsp.is_enabled and vim.lsp.is_enabled("gdscript") then
+      return
+    end
+    local get_clients = vim.lsp.get_clients or vim.lsp.get_active_clients
+    if #get_clients({ bufnr = buf, name = "gdscript" }) > 0 then
+      return
+    end
+    vim.lsp.start({
+      name = "gdscript",
+      cmd = vim.lsp.rpc.connect(opts.lsp.host, opts.lsp.port),
+      root_dir = opts.root,
+      filetypes = { "gdscript" },
+    }, { bufnr = buf })
+  end)
+end
+
+if opts.lsp then
+  vim.api.nvim_create_autocmd("FileType", {
+    group = group,
+    pattern = "gdscript",
+    callback = function(ev)
+      M.lsp_attach(ev.buf)
+    end,
+  })
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.bo[buf].filetype == "gdscript" then
+      M.lsp_attach(buf)
+    end
+  end
+end
+
 M.pending = nil
 
 -- Queues a click at the screen cell and then drop(), so the text lands
@@ -35,7 +81,49 @@ end
 -- lines above the line under the mouse; kind "text" inserts at the cell.
 function M.drop()
   local p = M.pending
-  M.pending = nil
+  -- Attaches Godot's language server to [buf], unless the user's own config
+-- already handles gdscript. Scheduled so that config's FileType handlers
+-- (vim.lsp.enable, lspconfig) run first and we can see their client.
+function M.lsp_attach(buf)
+  if not opts.lsp then
+    return
+  end
+  vim.schedule(function()
+    if not vim.api.nvim_buf_is_valid(buf) then
+      return
+    end
+    if vim.lsp.is_enabled and vim.lsp.is_enabled("gdscript") then
+      return
+    end
+    local get_clients = vim.lsp.get_clients or vim.lsp.get_active_clients
+    if #get_clients({ bufnr = buf, name = "gdscript" }) > 0 then
+      return
+    end
+    vim.lsp.start({
+      name = "gdscript",
+      cmd = vim.lsp.rpc.connect(opts.lsp.host, opts.lsp.port),
+      root_dir = opts.root,
+      filetypes = { "gdscript" },
+    }, { bufnr = buf })
+  end)
+end
+
+if opts.lsp then
+  vim.api.nvim_create_autocmd("FileType", {
+    group = group,
+    pattern = "gdscript",
+    callback = function(ev)
+      M.lsp_attach(ev.buf)
+    end,
+  })
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.bo[buf].filetype == "gdscript" then
+      M.lsp_attach(buf)
+    end
+  end
+end
+
+M.pending = nil
   if not p then
     return
   end

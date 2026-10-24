@@ -17,6 +17,9 @@ signal nvim_exited
 @export var font_size := 14
 ## Optional working directory for Neovim (":cd" on startup).
 @export var working_dir := ""
+## Godot's GDScript language server; port 0 leaves LSP to the user's config.
+@export var lsp_host := "127.0.0.1"
+@export var lsp_port := 0
 
 ## Callable(data: Variant, modifier: bool) -> Dictionary returning what
 ## [method DropText.build] returns. Unset means drops are refused.
@@ -97,7 +100,10 @@ func _on_api_info(err: Variant, res: Variant) -> void:
 		return
 	var chan: int = res[0]
 	var src := FileAccess.get_file_as_string(get_script().resource_path.get_base_dir().path_join("godot_nvim.lua"))
-	rpc.request("nvim_exec_lua", [src, [chan]])
+	var opts := {"root": working_dir if working_dir != "" else ProjectSettings.globalize_path("res://")}
+	if lsp_port > 0:
+		opts["lsp"] = {"host": lsp_host, "port": lsp_port}
+	rpc.request("nvim_exec_lua", [src, [chan, opts]])
 	var dims := _grid_dims()
 	rpc.request("nvim_ui_attach", [dims.x, dims.y, {"ext_linegrid": true, "rgb": true}])
 	attached = true

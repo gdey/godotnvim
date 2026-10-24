@@ -34,6 +34,35 @@ Neovim starts in the project folder and loads your usual config.
   Ctrl/Cmd held, `const Name = preload("res://path")`.
 - `:w` saves, and Godot reloads the script, shader or JSON.
 
+## Language server
+
+The plugin connects `.gd` buffers to the GDScript language server that the
+Godot editor runs (host and port come from Editor Settings →
+`network/language_server/remote_host` / `remote_port`, default
+`127.0.0.1:6005`). This gives hover docs (including the engine class
+reference), go-to-definition, references, rename and completion.
+
+If your own config already sets up a `gdscript` client (`vim.lsp.enable("gdscript")`
+or nvim-lspconfig), the plugin leaves it alone and uses yours. To turn the
+plugin's client off entirely, clear Editor Settings → `godot_nvim/connect_lsp`.
+
+On Neovim 0.11+ the default LSP mappings cover most of it: `K` for hover,
+`Ctrl-]` for definition, `grr` for references, `grn` for rename, `gra` for
+code actions, and `Ctrl-x Ctrl-o` for completion. For completion as you type
+and a `gd` mapping, add something like this to your config:
+
+```lua
+vim.api.nvim_create_autocmd("LspAttach", {
+  callback = function(ev)
+    local client = vim.lsp.get_client_by_id(ev.data.client_id)
+    if client and client.name == "gdscript" then
+      vim.lsp.completion.enable(true, client.id, ev.buf, { autotrigger = true })
+      vim.keymap.set("n", "gd", vim.lsp.buf.definition, { buffer = ev.buf })
+    end
+  end,
+})
+```
+
 ## Known gaps
 
 - Godot opens some scripts with `EditorInterface.edit_script()`, for
@@ -47,8 +76,6 @@ Neovim starts in the project folder and loads your usual config.
   only, or the copies can drift apart.
 - Only one grid (no `ext_multigrid`). The popup menu, cmdline and messages
   are drawn by Neovim inside the grid.
-- No LSP wiring yet. Godot's language server runs on port 6005, and you can
-  point `vim.lsp` at it from your own config.
 
 ## Layout
 

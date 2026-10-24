@@ -4,6 +4,7 @@ extends EditorPlugin
 
 const SETTING_PATH := "godot_nvim/nvim_path"
 const SETTING_ARGS := "godot_nvim/nvim_args"
+const SETTING_LSP := "godot_nvim/connect_lsp"
 
 ## Where GUI-launched editors usually find nvim; macOS apps don't get the
 ## shell's PATH.
@@ -22,6 +23,9 @@ func _enter_tree() -> void:
 	view.nvim_path = es.get_setting(SETTING_PATH)
 	view.nvim_args = PackedStringArray(String(es.get_setting(SETTING_ARGS)).split(" ", false))
 	view.working_dir = ProjectSettings.globalize_path("res://")
+	if es.get_setting(SETTING_LSP):
+		view.lsp_host = es.get_setting("network/language_server/remote_host")
+		view.lsp_port = es.get_setting("network/language_server/remote_port")
 	var theme := EditorInterface.get_editor_theme()
 	view.font = theme.get_font("source", "EditorFonts")
 	view.font_size = theme.get_font_size("source_size", "EditorFonts")
@@ -127,3 +131,7 @@ func _ensure_settings() -> void:
 		es.set_setting(SETTING_ARGS, "")
 	es.set_initial_value(SETTING_ARGS, "", false)
 	es.add_property_info({"name": SETTING_ARGS, "type": TYPE_STRING})
+	if not es.has_setting(SETTING_LSP):
+		es.set_setting(SETTING_LSP, true)
+	es.set_initial_value(SETTING_LSP, true, false)
+	es.add_property_info({"name": SETTING_LSP, "type": TYPE_BOOL})
