@@ -185,6 +185,13 @@ func _test_view_drop() -> void:
 	FileAccess.open(path, FileAccess.WRITE).store_string("extends Node\n\nfunc _ready():\n    pass\n")
 	view.open_file(path)
 	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "file shown in grid")
+	# Signal connections: a sign on the connected func, a warning for a missing one.
+	view.set_connections(path, [
+		{"method": "_ready", "signal": "pressed", "source": "Button", "target": "Main", "missing": false},
+		{"method": "_gone", "signal": "toggled", "source": "Button", "target": "Main", "missing": true}])
+	var marks: Array = await _req(view, "nvim_exec_lua", ["local ns = vim.api.nvim_get_namespaces() local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns.godot_nvim_slots, 0, -1, {})) do table.insert(r, m[2] + 1) end return {r, #vim.diagnostic.get(0, {namespace = ns.godot_nvim_missing_methods})}", []])
+	check(marks[1] == [[3], 1], "slot sign on func _ready, one missing-method warning: %s" % [marks])
+	view.set_connections(path, [])
 	# Drop onto row 2 ("func _ready():") inserts the line above it.
 	view.drop_text_at(Vector2i(3, 2), {"kind": "lines", "text": "@onready var player: Node = $Player\n"})
 	check(await _wait(func(): return view.grid.row_string(2).begins_with("@onready var player")), "onready line inserted at drop row")

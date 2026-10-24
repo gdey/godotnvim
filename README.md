@@ -52,6 +52,16 @@ Neovim starts in the project folder and loads your usual config.
 - Double-clicking a breakpoint, an error or a stack frame in the debugger
   opens the file in Neovim at that line.
 
+## Signal connections
+
+Like Godot's script editor, methods that a signal in the edited scene is
+connected to get a `⇠` sign (highlight `GodotSignalSlot`, linked to
+`DiagnosticOk`; change the glyph with `vim.g.godot_nvim_slot_sign`).
+`:GodotConnections` lists the signals connected to the function under the
+cursor. A connection to a method the script doesn't have shows up as a
+warning diagnostic. The signs follow the scene you're editing and update when
+you connect or disconnect signals in the Node dock.
+
 ## Language server
 
 The plugin connects `.gd` buffers to the GDScript language server that the

@@ -144,10 +144,112 @@ end
 vim.api.nvim_create_user_command("GodotToggleBreakpoint", M.toggle_breakpoint,
   { desc = "Toggle a Godot debugger breakpoint on the cursor line" })
 
+-- Signal connections -------------------------------------------------------
+-- Like Godot's script editor, mark methods that signals in the edited scene
+-- are connected to, and warn about connections to methods that don't exist.
+-- Godot pushes the connection list with set_connections.
+
+local slot_ns = vim.api.nvim_create_namespace("godot_nvim_slots")
+local missing_ns = vim.api.nvim_create_namespace("godot_nvim_missing_methods")
+vim.api.nvim_set_hl(0, "GodotSignalSlot", { default = true, link = "DiagnosticOk" })
+
+-- absolute path -> list of { method, signal, source, target, missing }
+M.connections = {}
+
+-- method name -> 1-based line of its "func" in [buf]
+local function func_lines(buf)
+  local out = {}
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+    local name = l:match("^%s*func%s+([%w_]+)%s*%(") or l:match("^%s*static%s+func%s+([%w_]+)%s*%(")
+    if name and not out[name] then
+      out[name] = i
+    end
+  end
+  return out
+end
+
+local function apply_connections(buf)
+  if not vim.api.nvim_buf_is_loaded(buf) then
+    return
+  end
+  vim.api.nvim_buf_clear_namespace(buf, slot_ns, 0, -1)
+  local conns = M.connections[vim.api.nvim_buf_get_name(buf)] or {}
+  local lines = func_lines(buf)
+  local marked, diags = {}, {}
+  for _, c in ipairs(conns) do
+    local l = lines[c.method]
+    if l and not marked[c.method] then
+      marked[c.method] = true
+      vim.api.nvim_buf_set_extmark(buf, slot_ns, l - 1, 0, {
+        sign_text = vim.g.godot_nvim_slot_sign or "⇠",
+        sign_hl_group = "GodotSignalSlot",
+        priority = 100, -- below breakpoints, which win the sign column
+      })
+    elseif not l and c.missing then
+      table.insert(diags, {
+        lnum = 0,
+        col = 0,
+        severity = vim.diagnostic.severity.WARN,
+        source = "godot",
+        message = string.format("Missing connected method '%s' for signal '%s' from node '%s' to node '%s'.",
+          c.method, c.signal, c.source, c.target),
+      })
+    end
+  end
+  vim.diagnostic.set(missing_ns, buf, diags)
+end
+
+function M.set_connections(path, conns)
+  M.connections[path] = conns
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_get_name(buf) == path then
+      apply_connections(buf)
+    end
+  end
+end
+
+-- Lists the signals connected to the function the cursor is in.
+function M.show_connections()
+  local buf = vim.api.nvim_get_current_buf()
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  local name
+  for i = row, 1, -1 do
+    local l = vim.api.nvim_buf_get_lines(buf, i - 1, i, false)[1]
+    name = l:match("^%s*func%s+([%w_]+)") or l:match("^%s*static%s+func%s+([%w_]+)")
+    if name then
+      break
+    end
+  end
+  local out = {}
+  for _, c in ipairs(M.connections[vim.api.nvim_buf_get_name(buf)] or {}) do
+    if c.method == name then
+      table.insert(out, string.format("%s.%s -> %s.%s()", c.source, c.signal, c.target, c.method))
+    end
+  end
+  if #out == 0 then
+    vim.notify(name and ("No signals connected to " .. name .. "()") or "Not inside a function")
+  else
+    vim.notify(table.concat(out, "\n"))
+  end
+end
+
+vim.api.nvim_create_user_command("GodotConnections", M.show_connections,
+  { desc = "Show the Godot signals connected to the function under the cursor" })
+
+vim.api.nvim_create_autocmd({ "TextChanged", "InsertLeave" }, {
+  group = group,
+  callback = function(ev)
+    if M.connections[vim.api.nvim_buf_get_name(ev.buf)] then
+      apply_connections(ev.buf)
+    end
+  end,
+})
+
 vim.api.nvim_create_autocmd({ "BufReadPost", "BufWinEnter" }, {
   group = group,
   callback = function(ev)
     apply_breakpoints(ev.buf)
+    apply_connections(ev.buf)
   end,
 })
 

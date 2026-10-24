@@ -101,6 +101,14 @@ func open_file(path: String, line := 0, column := 0) -> void:
 
 
 ## Shows [param lines] (1-based) as breakpoint signs in [param path]'s buffer.
+## Marks methods in [param path]'s buffer that scene signals connect to.
+## [param conns]: Dictionaries with method, signal, source, target, missing.
+func set_connections(path: String, conns: Array) -> void:
+	if attached:
+		rpc.request("nvim_exec_lua", ["godot_nvim.set_connections(...)",
+			[ProjectSettings.globalize_path(path), conns]])
+
+
 func set_breakpoints(path: String, lines: Array) -> void:
 	if attached:
 		rpc.request("nvim_exec_lua", ["godot_nvim.set_breakpoints(...)",
