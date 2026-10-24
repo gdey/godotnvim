@@ -60,6 +60,9 @@ func _enter_tree() -> void:
 	view.attached_to_nvim.connect(_sync_breakpoints.bind(true))
 	view.attached_to_nvim.connect(_sync_theme.bind(true))
 	es.settings_changed.connect(_sync_theme)
+	# Picking a text editor theme sets its colors only when the editor theme
+	# is rebuilt, after settings_changed and without another one.
+	view.theme_changed.connect(_sync_theme)
 	EditorInterface.get_editor_main_screen().add_child(view)
 	view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	view.hide()
