@@ -11,9 +11,16 @@ _G.godot_nvim = M
 
 local group = vim.api.nvim_create_augroup("godot_nvim", { clear = true })
 
-if opts.runtime and not vim.tbl_contains(vim.opt.runtimepath:get(), opts.runtime) then
-  vim.opt.runtimepath:append(opts.runtime)
+-- With --embed, Neovim sources the user's config only once the UI attaches,
+-- which is after this script runs. Configs that reset 'runtimepath' (lazy.nvim
+-- does by default) would drop our folder, so add it again on VimEnter.
+local function add_runtime()
+  if opts.runtime and not vim.tbl_contains(vim.opt.runtimepath:get(), opts.runtime) then
+    vim.opt.runtimepath:append(opts.runtime)
+  end
 end
+add_runtime()
+vim.api.nvim_create_autocmd("VimEnter", { group = group, callback = add_runtime })
 
 -- Quitting -----------------------------------------------------------------
 -- Neovim lives as long as the Godot editor, so on the last window :q acts
@@ -177,7 +184,22 @@ M.theme = nil
 
 function M.set_theme(colors)
   M.theme = colors
-  vim.cmd.colorscheme("godot")
+  if vim.v.vim_did_enter == 0 then
+    -- Apply after the user's config, so its colorscheme doesn't replace ours.
+    vim.api.nvim_create_autocmd("VimEnter", {
+      group = group,
+      once = true,
+      callback = function()
+        M.set_theme(M.theme)
+      end,
+    })
+    return
+  end
+  add_runtime()
+  if not pcall(vim.cmd.colorscheme, "godot") then
+    M.apply_theme()
+    vim.api.nvim_exec_autocmds("ColorScheme", { pattern = "godot", modeline = false })
+  end
 end
 
 -- Called by colors/godot.lua.

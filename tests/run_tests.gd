@@ -191,11 +191,16 @@ func _test_view_drop() -> void:
 	print("view drop")
 	var view := NvimView.new()
 	view.nvim_path = _nvim_path()
-	view.nvim_args = PackedStringArray(["--clean", "-n"])
+	view.nvim_args = PackedStringArray(["--clean", "-u", ProjectSettings.globalize_path("res://tests/fixtures/init.lua"), "-n"])
 	view.size = Vector2(800, 400)
 	root.add_child(view)
+	# Like the plugin, send colors on attach: before the user's config runs
+	# (fixtures/init.lua, which resets 'runtimepath' and sets a colorscheme).
+	view.attached_to_nvim.connect(func(): view.set_colorscheme({"background_color": "#202830", "dark": true}))
 	check(view.start() == OK, "view starts nvim")
 	check(await _wait(func(): return view.attached and view.grid.height > 0), "view attached")
+	var first: Array = await _req(view, "nvim_exec_lua", ["return {vim.g.colors_name, vim.api.nvim_get_hl(0, {name = 'Normal'}).bg}", []])
+	check(first[1] == ["godot", 0x202830], "colors sent on attach win over the user's config: %s" % [first])
 	var path := OS.get_cache_dir().path_join("godot_nvim_test.gd")
 	FileAccess.open(path, FileAccess.WRITE).store_string("extends Node\n\nfunc _ready():\n    pass\n")
 	view.open_file(path)
