@@ -164,6 +164,14 @@ func _wait(cond: Callable, ms := 3000) -> bool:
 	return cond.call()
 
 
+## Sends a request and waits for its [error, result].
+func _req(view: NvimView, method: String, params: Array) -> Array:
+	var out := []
+	view.rpc.request(method, params, func(e, r): out.append_array([e, r]))
+	await _wait(func(): return out.size() == 2)
+	return out if out.size() == 2 else ["timeout", null]
+
+
 func _test_view_drop() -> void:
 	print("view drop")
 	var view := NvimView.new()
@@ -196,17 +204,27 @@ func _test_view_drop() -> void:
 	var saved := []
 	view.file_saved.connect(func(p, _bps): saved.append(p))
 	check(await _wait(func(): return saved.size() > 0), "save notification")
-	# :q / :wq on the last window close the file but keep Neovim alive.
+	# :q / :wq on the last window act like :bd / :w + :bd: Neovim stays,
+	# the buffer goes, and no new buffers pile up.
 	var pid := view.rpc.pid
-	view.rpc.request("nvim_input", [":wq<CR>"])
-	await create_timer(0.5).timeout
-	view.rpc.poll()
-	check(view.rpc.pid == pid and view.rpc.is_running(), ":wq keeps nvim running")
+	var path2 := OS.get_cache_dir().path_join("godot_nvim_test2.gd")
+	FileAccess.open(path2, FileAccess.WRITE).store_string("extends Node2D\n")
+	view.open_file(path2)
+	await _wait(func(): return view.grid.row_string(0).begins_with("extends Node2D"))
+	view.rpc.request("nvim_input", [":q<CR>"])
+	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node ")), ":q shows the previous file")
+	var bufs: Array = await _req(view, "nvim_exec_lua", ["return {#vim.fn.getbufinfo({buflisted = 1}), #vim.api.nvim_list_bufs(), vim.fn.bufexists(...) == 1 and vim.fn.buflisted(vim.fn.bufnr(...)) == 1}", [path2]])
+	check(view.rpc.pid == pid and view.rpc.is_running(), ":q keeps nvim running")
+	check(bufs[1][2] == false, ":q removed the quit buffer from the list: %s" % [bufs])
+	for i in 3:
+		view.rpc.request("nvim_input", [":wq<CR>" if i == 0 else ":q<CR>"])
+		await create_timer(0.3).timeout
+	var after: Array = await _req(view, "nvim_exec_lua", ["return {#vim.fn.getbufinfo({buflisted = 1}), #vim.api.nvim_list_bufs(), #vim.api.nvim_tabpage_list_wins(0)}", []])
+	check(view.rpc.pid == pid and view.rpc.is_running(), ":wq and repeated :q keep nvim running")
+	check(after[1][0] == 0 and after[1][2] == 1, "no listed buffers left, one window: %s" % [after])
+	check(after[1][1] <= bufs[1][1], "no buffers piled up (%s -> %s)" % [bufs[1][1], after[1][1]])
 	view.open_file(path)
 	check(await _wait(func(): return view.grid.row_string(0).begins_with("extends Node")), "file reopens after :wq")
-	view.rpc.request("nvim_input", [":q<CR>"])
-	await create_timer(0.5).timeout
-	check(view.rpc.pid == pid and view.rpc.is_running(), ":q keeps nvim running")
 	# :qa! really exits; the view restarts Neovim on the last file.
 	view.open_file(path)
 	await _wait(func(): return view.grid.row_string(0).begins_with("extends Node"))

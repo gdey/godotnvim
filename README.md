@@ -48,8 +48,9 @@ Neovim starts in the project folder and loads your usual config.
 - `:w` saves, and Godot reloads the script, shader or JSON.
 - Like Godot's own script editor, unsaved Neovim buffers are written when you
   save a scene or run the project, and Godot asks about them when it closes.
-- Neovim runs for as long as the editor does. `:q`, `:wq` and `:x` on the
-  last window close the file but leave Neovim running. If Neovim exits anyway
+- Neovim runs for as long as the editor does. On the last window, `:q` acts
+  like `:bd` and `:wq` / `:x` like `:w` + `:bd`: the file closes, the previous
+  file (or an empty placeholder) shows, and Neovim keeps running. If Neovim exits anyway
   (`:qa`, a crash), it restarts on the last file.
 
 ## Debugger
