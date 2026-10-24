@@ -49,6 +49,7 @@ func _enter_tree() -> void:
 	view.file_saved.connect(_on_file_saved)
 	view.buffer_entered.connect(func(p: String) -> void:
 		_current_path = p
+		_sync_overrides(p)
 		_sync_connections(true))
 	scene_changed.connect(func(_root: Node) -> void: _sync_connections(true))
 	view.breakpoint_requested.connect(_set_breakpoint)
@@ -160,6 +161,8 @@ func _on_file_saved(path: String, breakpoints: Array) -> void:
 		return
 	var se := EditorInterface.get_script_editor()
 	se.reload_open_files()
+	# The script's extends line may have changed.
+	_sync_overrides(path)
 	# Edits move Neovim's signs; make Godot's list follow them.
 	var have: Array = _godot_breakpoints().get(path, [])
 	for line in have:
@@ -241,6 +244,37 @@ func _connections_for(path: String) -> Array:
 				"target": _scene_path(root, node),
 				"missing": not _script_has_method(script, method),
 			})
+	return out
+
+
+## Sends the methods [param path]'s base classes define, so Neovim can mark
+## the ones the script overrides, as Godot's script editor does.
+func _sync_overrides(path: String) -> void:
+	if view == null or not view.attached or not path.ends_with(".gd") or not ResourceLoader.exists(path):
+		return
+	var script := load(path) as Script
+	# A script that doesn't parse has no base type; keep the last signs.
+	if script == null or script.get_instance_base_type() == &"":
+		return
+	view.set_overrides(path, overridable_methods(script))
+
+
+## Method name -> where it's defined: the nearest base script's path, or the
+## engine class name. Mirrors ScriptTextEditor's override lookup.
+static func overridable_methods(script: Script) -> Dictionary:
+	var out := {}
+	var s := script.get_base_script()
+	while s != null:
+		for m in s.get_script_method_list():
+			if not out.has(m["name"]):
+				out[m["name"]] = s.resource_path
+		s = s.get_base_script()
+	var cls := script.get_instance_base_type()
+	while cls != &"":
+		for m in ClassDB.class_get_method_list(cls, true):
+			if not out.has(m["name"]):
+				out[m["name"]] = String(cls)
+		cls = ClassDB.get_parent_class(cls)
 	return out
 
 

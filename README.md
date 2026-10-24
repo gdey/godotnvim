@@ -52,15 +52,24 @@ Neovim starts in the project folder and loads your usual config.
 - Double-clicking a breakpoint, an error or a stack frame in the debugger
   opens the file in Neovim at that line.
 
-## Signal connections
+## Signal connections and overrides
 
-Like Godot's script editor, methods that a signal in the edited scene is
-connected to get a `⇠` sign (highlight `GodotSignalSlot`, linked to
-`DiagnosticOk`; change the glyph with `vim.g.godot_nvim_slot_sign`).
-`:GodotConnections` lists the signals connected to the function under the
-cursor. A connection to a method the script doesn't have shows up as a
-warning diagnostic. The signs follow the scene you're editing and update when
-you connect or disconnect signals in the Node dock.
+Like Godot's script editor, the sign column marks methods:
+
+- `⇠` on a method that a signal in the edited scene is connected to
+  (highlight `GodotSignalSlot`, linked to `DiagnosticOk`).
+- `⇡` on a method that overrides one from a base class, such as `_ready()` or
+  a method of a base script (highlight `GodotMethodOverride`, linked to
+  `DiagnosticInfo`).
+- `⇡⇠` when both apply.
+
+Change the glyphs with `vim.g.godot_nvim_slot_sign`,
+`vim.g.godot_nvim_override_sign` and `vim.g.godot_nvim_override_slot_sign`.
+`:GodotConnections` shows the signals connected to the function under the
+cursor and the method it overrides. A connection to a method the script
+doesn't have shows up as a warning diagnostic. Signal signs follow the scene
+you're editing and update when you connect or disconnect signals in the Node
+dock; override signs update as you type, and follow `extends` when you save.
 
 ## Language server
 

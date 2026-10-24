@@ -11,6 +11,7 @@ func _init() -> void:
 	_test_msgpack()
 	_test_keys()
 	_test_drop_text()
+	_test_overrides()
 	await _test_embed()
 	await _test_view_drop()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
@@ -155,6 +156,20 @@ func _test_drop_text() -> void:
 	main.queue_free()
 
 
+func _test_overrides() -> void:
+	var base_path := "user://godot_nvim_test_base.gd"
+	FileAccess.open(base_path, FileAccess.WRITE).store_string("extends CharacterBody2D\nfunc hit():\n\tpass\n")
+	var s := GDScript.new()
+	s.source_code = "extends \"%s\"\nfunc own():\n\tpass\n" % [base_path]
+	s.reload()
+	var methods: Dictionary = load("res://addons/godot_nvim/plugin.gd").overridable_methods(s)
+	check(methods.get("_ready") == "Node", "_ready comes from Node: %s" % [methods.get("_ready")])
+	check(methods.get("_physics_process") == "Node", "_physics_process from Node")
+	check(methods.get("move_and_slide") == "CharacterBody2D", "move_and_slide from CharacterBody2D")
+	check(methods.get("hit") == base_path, "hit from the base script: %s" % [methods.get("hit")])
+	check(not methods.has("own"), "the script's own methods aren't overrides")
+
+
 func _wait(cond: Callable, ms := 3000) -> bool:
 	var deadline := Time.get_ticks_msec() + ms
 	while Time.get_ticks_msec() < deadline:
@@ -191,7 +206,21 @@ func _test_view_drop() -> void:
 		{"method": "_gone", "signal": "toggled", "source": "Button", "target": "Main", "missing": true}])
 	var marks: Array = await _req(view, "nvim_exec_lua", ["local ns = vim.api.nvim_get_namespaces() local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns.godot_nvim_slots, 0, -1, {})) do table.insert(r, m[2] + 1) end return {r, #vim.diagnostic.get(0, {namespace = ns.godot_nvim_missing_methods})}", []])
 	check(marks[1] == [[3], 1], "slot sign on func _ready, one missing-method warning: %s" % [marks])
+	# Overrides: their own sign, and a combined one on a connected override.
+	var signs_lua := "local ns = vim.api.nvim_get_namespaces() local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns.godot_nvim_slots, 0, -1, {details = true})) do table.insert(r, {m[2] + 1, vim.trim(m[4].sign_text), m[4].sign_hl_group}) end return r"
+	view.set_overrides(path, {"_ready": "Node", "_process": "Node"})
+	marks = await _req(view, "nvim_exec_lua", [signs_lua, []])
+	check(marks[1] == [[3, "⇡⇠", "GodotSignalSlot"]], "combined sign on connected override: %s" % [marks])
 	view.set_connections(path, [])
+	marks = await _req(view, "nvim_exec_lua", [signs_lua, []])
+	check(marks[1] == [[3, "⇡", "GodotMethodOverride"]], "override sign on func _ready: %s" % [marks])
+	# A newly typed override gets its sign on the next edit.
+	view.rpc.request("nvim_buf_set_lines", [0, -1, -1, false, ["", "func _process(delta):", "    pass"]])
+	view.rpc.request("nvim_exec_autocmds", ["TextChanged", {"buffer": 0}])
+	marks = await _req(view, "nvim_exec_lua", [signs_lua, []])
+	check(marks[1].size() == 2 and marks[1][1][0] == 6, "sign follows a new override: %s" % [marks])
+	view.rpc.request("nvim_buf_set_lines", [0, -4, -1, false, []])
+	view.set_overrides(path, {})
 	# Drop onto row 2 ("func _ready():") inserts the line above it.
 	view.drop_text_at(Vector2i(3, 2), {"kind": "lines", "text": "@onready var player: Node = $Player\n"})
 	check(await _wait(func(): return view.grid.row_string(2).begins_with("@onready var player")), "onready line inserted at drop row")

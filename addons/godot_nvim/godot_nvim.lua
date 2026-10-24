@@ -144,48 +144,55 @@ end
 vim.api.nvim_create_user_command("GodotToggleBreakpoint", M.toggle_breakpoint,
   { desc = "Toggle a Godot debugger breakpoint on the cursor line" })
 
--- Signal connections -------------------------------------------------------
+-- Signal connections and overrides ---------------------------------------
 -- Like Godot's script editor, mark methods that signals in the edited scene
--- are connected to, and warn about connections to methods that don't exist.
--- Godot pushes the connection list with set_connections.
+-- are connected to, methods that override a base class method, and warn
+-- about connections to methods that don't exist. Godot pushes the lists with
+-- set_connections and set_overrides.
 
 local slot_ns = vim.api.nvim_create_namespace("godot_nvim_slots")
 local missing_ns = vim.api.nvim_create_namespace("godot_nvim_missing_methods")
 vim.api.nvim_set_hl(0, "GodotSignalSlot", { default = true, link = "DiagnosticOk" })
+vim.api.nvim_set_hl(0, "GodotMethodOverride", { default = true, link = "DiagnosticInfo" })
 
 -- absolute path -> list of { method, signal, source, target, missing }
 M.connections = {}
+-- absolute path -> { method name -> base script path or engine class }
+M.overrides = {}
 
--- method name -> 1-based line of its "func" in [buf]
+-- Returns method name -> 1-based line of its first "func" in [buf], and the
+-- same for top-level, non-static funcs (the only ones that can override).
 local function func_lines(buf)
-  local out = {}
+  local any, top = {}, {}
   for i, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
     local name = l:match("^%s*func%s+([%w_]+)%s*%(") or l:match("^%s*static%s+func%s+([%w_]+)%s*%(")
-    if name and not out[name] then
-      out[name] = i
+    if name and not any[name] then
+      any[name] = i
+    end
+    name = l:match("^func%s+([%w_]+)%s*%(")
+    if name and not top[name] then
+      top[name] = i
     end
   end
-  return out
+  return any, top
 end
 
-local function apply_connections(buf)
+local function apply_method_signs(buf)
   if not vim.api.nvim_buf_is_loaded(buf) then
     return
   end
   vim.api.nvim_buf_clear_namespace(buf, slot_ns, 0, -1)
-  local conns = M.connections[vim.api.nvim_buf_get_name(buf)] or {}
-  local lines = func_lines(buf)
-  local marked, diags = {}, {}
+  local name = vim.api.nvim_buf_get_name(buf)
+  local conns = M.connections[name] or {}
+  local overrides = M.overrides[name] or {}
+  local any, top = func_lines(buf)
+  local signs, diags = {}, {} -- line -> { slot = bool, override = bool }
   for _, c in ipairs(conns) do
-    local l = lines[c.method]
-    if l and not marked[c.method] then
-      marked[c.method] = true
-      vim.api.nvim_buf_set_extmark(buf, slot_ns, l - 1, 0, {
-        sign_text = vim.g.godot_nvim_slot_sign or "⇠",
-        sign_hl_group = "GodotSignalSlot",
-        priority = 100, -- below breakpoints, which win the sign column
-      })
-    elseif not l and c.missing then
+    local l = any[c.method]
+    if l then
+      signs[l] = signs[l] or {}
+      signs[l].slot = true
+    elseif c.missing then
       table.insert(diags, {
         lnum = 0,
         col = 0,
@@ -196,31 +203,67 @@ local function apply_connections(buf)
       })
     end
   end
+  for method, l in pairs(top) do
+    if overrides[method] then
+      signs[l] = signs[l] or {}
+      signs[l].override = true
+    end
+  end
+  for l, s in pairs(signs) do
+    local text, hl
+    if s.slot and s.override then
+      text, hl = vim.g.godot_nvim_override_slot_sign or "⇡⇠", "GodotSignalSlot"
+    elseif s.slot then
+      text, hl = vim.g.godot_nvim_slot_sign or "⇠", "GodotSignalSlot"
+    else
+      text, hl = vim.g.godot_nvim_override_sign or "⇡", "GodotMethodOverride"
+    end
+    vim.api.nvim_buf_set_extmark(buf, slot_ns, l - 1, 0, {
+      sign_text = text,
+      sign_hl_group = hl,
+      priority = 100, -- below breakpoints, which win the sign column
+    })
+  end
   vim.diagnostic.set(missing_ns, buf, diags)
+end
+
+local function apply_to_path(path)
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_get_name(buf) == path then
+      apply_method_signs(buf)
+    end
+  end
 end
 
 function M.set_connections(path, conns)
   M.connections[path] = conns
-  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_get_name(buf) == path then
-      apply_connections(buf)
-    end
-  end
+  apply_to_path(path)
 end
 
--- Lists the signals connected to the function the cursor is in.
+function M.set_overrides(path, methods)
+  M.overrides[path] = methods
+  apply_to_path(path)
+end
+
+-- Lists the signals connected to the function the cursor is in, and the
+-- base class method it overrides.
 function M.show_connections()
   local buf = vim.api.nvim_get_current_buf()
   local row = vim.api.nvim_win_get_cursor(0)[1]
-  local name
+  local name, top
   for i = row, 1, -1 do
     local l = vim.api.nvim_buf_get_lines(buf, i - 1, i, false)[1]
     name = l:match("^%s*func%s+([%w_]+)") or l:match("^%s*static%s+func%s+([%w_]+)")
     if name then
+      top = l:match("^func%s") ~= nil
       break
     end
   end
   local out = {}
+  local base = top and (M.overrides[vim.api.nvim_buf_get_name(buf)] or {})[name]
+  if base then
+    table.insert(out, string.format("Overrides %s.%s()", base, name))
+  end
   for _, c in ipairs(M.connections[vim.api.nvim_buf_get_name(buf)] or {}) do
     if c.method == name then
       table.insert(out, string.format("%s.%s -> %s.%s()", c.source, c.signal, c.target, c.method))
@@ -234,13 +277,14 @@ function M.show_connections()
 end
 
 vim.api.nvim_create_user_command("GodotConnections", M.show_connections,
-  { desc = "Show the Godot signals connected to the function under the cursor" })
+  { desc = "Show the Godot signals connected to, and the method overridden by, the function under the cursor" })
 
 vim.api.nvim_create_autocmd({ "TextChanged", "InsertLeave" }, {
   group = group,
   callback = function(ev)
-    if M.connections[vim.api.nvim_buf_get_name(ev.buf)] then
-      apply_connections(ev.buf)
+    local name = vim.api.nvim_buf_get_name(ev.buf)
+    if M.connections[name] or M.overrides[name] then
+      apply_method_signs(ev.buf)
     end
   end,
 })
@@ -249,7 +293,7 @@ vim.api.nvim_create_autocmd({ "BufReadPost", "BufWinEnter" }, {
   group = group,
   callback = function(ev)
     apply_breakpoints(ev.buf)
-    apply_connections(ev.buf)
+    apply_method_signs(ev.buf)
   end,
 })
 
