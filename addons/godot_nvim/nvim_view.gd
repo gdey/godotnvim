@@ -15,6 +15,9 @@ signal buffer_entered(path: String)
 signal modified_changed(paths: PackedStringArray)
 ## The user toggled a breakpoint in Neovim; [param line] is 1-based.
 signal breakpoint_requested(path: String, line: int, enabled: bool)
+## A :Godot run command: [param action] is "project", "current", "scene"
+## (with [param arg] a scene path, or "" to pick one), "pause" or "stop".
+signal run_requested(action: String, arg: String)
 signal nvim_exited
 
 @export var nvim_path := "nvim"
@@ -28,6 +31,9 @@ signal nvim_exited
 @export var lsp_port := 0
 ## Start Neovim again (on the last file) if it exits on its own, e.g. :qa.
 @export var auto_restart := true
+## Key presses matching these go to the editor instead of Neovim, so editor
+## shortcuts (such as running the project) keep working.
+var passthrough_shortcuts: Array[Shortcut] = []
 
 ## Callable(data: Variant, modifier: bool) -> Dictionary returning what
 ## [method DropText.build] returns. Unset means drops are refused.
@@ -185,6 +191,9 @@ func _on_notification(method: String, params: Array) -> void:
 			modified_changed.emit(paths)
 		"godot_nvim_set_breakpoint":
 			breakpoint_requested.emit(ProjectSettings.localize_path(params[0]), params[1], params[2])
+		"godot_nvim_run":
+			var arg: String = params[1] if params.size() > 1 else ""
+			run_requested.emit(params[0], ProjectSettings.localize_path(arg) if arg != "" else "")
 		"godot_nvim_buf_enter":
 			if params[0] != "":
 				_last_file = params[0]
@@ -362,6 +371,9 @@ func _gui_input(event: InputEvent) -> void:
 	if not attached:
 		return
 	if event is InputEventKey:
+		for sc in passthrough_shortcuts:
+			if sc and sc.matches_event(event):
+				return
 		if event.pressed:
 			var keys := NvimKeys.from_event(event)
 			if keys != "":

@@ -203,6 +203,34 @@ end
 vim.api.nvim_create_user_command("GodotToggleBreakpoint", function() M.toggle_breakpoint() end,
   { desc = "Toggle a Godot debugger breakpoint on the cursor line" })
 
+-- Running -------------------------------------------------------------------
+-- The editor's run bar, from Neovim. Godot's own shortcuts for these (F5..F8,
+-- or Cmd+B, Cmd+R, ... on macOS) pass through the view to the editor too.
+
+local function run(action, arg)
+  vim.rpcnotify(chan, "godot_nvim_run", action, arg or "")
+end
+
+vim.api.nvim_create_user_command("GodotRun", function() run("project") end,
+  { desc = "Run the Godot project" })
+vim.api.nvim_create_user_command("GodotRunCurrent", function() run("current") end,
+  { desc = "Run the scene being edited in Godot" })
+vim.api.nvim_create_user_command("GodotRunScene", function(o)
+  run("scene", o.args ~= "" and vim.fn.fnamemodify(o.args, ":p") or nil)
+end, {
+  nargs = "?",
+  complete = function(lead)
+    return vim.tbl_filter(function(f)
+      return f:match("/$") or f:match("%.t?scn$")
+    end, vim.fn.getcompletion(lead, "file"))
+  end,
+  desc = "Run a Godot scene (pick one when no file is given)",
+})
+vim.api.nvim_create_user_command("GodotPause", function() run("pause") end,
+  { desc = "Pause or resume the running Godot project" })
+vim.api.nvim_create_user_command("GodotStop", function() run("stop") end,
+  { desc = "Stop the running Godot project" })
+
 -- Godot theme ---------------------------------------------------------------
 -- The "godot" colorscheme (colors/godot.lua) is built from the script
 -- editor's colors, which Godot pushes with set_theme: keys are the settings

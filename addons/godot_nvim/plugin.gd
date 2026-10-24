@@ -14,6 +14,9 @@ const _NVIM_CANDIDATES := ["/opt/homebrew/bin/nvim", "/usr/local/bin/nvim", "/us
 
 const _DebuggerBridge := preload("res://addons/godot_nvim/debugger_bridge.gd")
 const _ThemeColors := preload("res://addons/godot_nvim/theme_colors.gd")
+## Editor shortcuts that work while typing in Neovim.
+const _PASSTHROUGH_SHORTCUTS := ["editor/run_project", "editor/run_current_scene",
+	"editor/run_specific_scene", "editor/pause_running_project", "editor/stop_running_project"]
 
 var view: NvimView
 var _current_path := ""
@@ -59,6 +62,11 @@ func _enter_tree() -> void:
 	scene_changed.connect(func(_root: Node) -> void: _sync_connections(true))
 	view.breakpoint_requested.connect(_set_breakpoint)
 	view.modified_changed.connect(func(paths: PackedStringArray) -> void: _unsaved = paths)
+	view.run_requested.connect(_run)
+	for name in _PASSTHROUGH_SHORTCUTS:
+		var sc := es.get_shortcut(name)
+		if sc:
+			view.passthrough_shortcuts.append(sc)
 	view.attached_to_nvim.connect(_sync_breakpoints.bind(true))
 	view.attached_to_nvim.connect(_sync_theme.bind(true))
 	es.settings_changed.connect(_sync_theme)
@@ -235,6 +243,47 @@ func _godot_breakpoints() -> Dictionary:
 	for p in out:
 		out[p].sort()
 	return out
+
+
+# --- Running -----------------------------------------------------------------
+
+## Handles :GodotRun, :GodotRunCurrent, :GodotRunScene, :GodotPause and
+## :GodotStop.
+func _run(action: String, arg: String) -> void:
+	match action:
+		"project":
+			EditorInterface.play_main_scene()
+		"current":
+			EditorInterface.play_current_scene()
+		"scene":
+			if arg == "":
+				EditorInterface.popup_quick_open(func(path: String) -> void:
+					if path != "":
+						EditorInterface.play_custom_scene(path), ["PackedScene"])
+			elif ResourceLoader.exists(arg, "PackedScene"):
+				EditorInterface.play_custom_scene(arg)
+			else:
+				push_warning("godot_nvim: not a scene: " + arg)
+		"stop":
+			EditorInterface.stop_playing_scene()
+		"pause":
+			# No API for this; press the run bar's pause button, as its
+			# shortcut does.
+			var b := _find_shortcut_button(EditorInterface.get_base_control(),
+				EditorInterface.get_editor_settings().get_shortcut("editor/pause_running_project"))
+			if b and not b.disabled:
+				b.button_pressed = not b.button_pressed
+				b.pressed.emit()
+
+
+static func _find_shortcut_button(n: Node, sc: Shortcut) -> BaseButton:
+	if n is BaseButton and n.shortcut == sc:
+		return n
+	for c in n.get_children():
+		var r := _find_shortcut_button(c, sc)
+		if r:
+			return r
+	return null
 
 
 # --- Colors ------------------------------------------------------------------
