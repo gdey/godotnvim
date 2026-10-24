@@ -21,8 +21,8 @@ Neovim starts in the project folder and loads your usual config.
 
 ## Use
 
-- Open a script from the FileSystem dock (anything that goes through
-  `EditorInterface.edit_resource`). It opens in the Neovim tab.
+- Open a script or a plain text file (`.cfg`, `.txt`, `.md`, …) from the
+  FileSystem dock. It opens in the Neovim tab.
 - Drag a node from the Scene dock onto the view to insert `$Path/To/Node`
   (or `%Name` for unique names). Hold Ctrl (Cmd on macOS) while dropping to
   insert `@onready var node_name: Type = $Path/To/Node` above the line under
@@ -39,6 +39,9 @@ Neovim starts in the project folder and loads your usual config.
   in Godot's built-in script editor. The fix is either to route Godot's
   "external editor" setting to the embedded Neovim, or to add an engine hook
   through a local Godot patch.
+- When you open a plain text file, Godot also opens it in a background tab of
+  its own script editor (the engine does that before any plugin sees the
+  file). Edit in Neovim only, or the two copies can drift apart.
 - Only one grid (no `ext_multigrid`). The popup menu, cmdline and messages
   are drawn by Neovim inside the grid.
 - No LSP wiring yet. Godot's language server runs on port 6005, and you can

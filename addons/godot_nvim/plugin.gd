@@ -62,14 +62,19 @@ func _make_visible(visible: bool) -> void:
 			view.grab_focus()
 
 
-## Only file-backed GDScript: built-in scripts (path contains "::") stay in
-## Godot's editor since Neovim can't open them.
+## File-backed GDScript, plus plain text files (Godot's internal TextFile
+## class, which is how the FileSystem dock opens .cfg, .txt, .md, ...).
+## Built-in scripts (path contains "::") stay in Godot's editor since
+## Neovim can't open them.
 func _handles(object: Object) -> bool:
-	return object is GDScript and object.resource_path != "" and not object.resource_path.contains("::")
+	if not (object is GDScript or object.is_class("TextFile")):
+		return false
+	var path: String = object.resource_path
+	return path != "" and not path.contains("::")
 
 
 func _edit(object: Object) -> void:
-	if object is Script and _handles(object):
+	if _handles(object):
 		view.open_file(object.resource_path)
 
 
