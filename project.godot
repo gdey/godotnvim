@@ -1,0 +1,12 @@
+; Development project for the godot_nvim addon.
+
+config_version=5
+
+[application]
+
+config/name="godotnvim dev"
+config/features=PackedStringArray("4.7")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_nvim/plugin.cfg")
