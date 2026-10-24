@@ -5,9 +5,22 @@ inside the editor with Neovim's UI protocol (`ext_linegrid`). Dragging nodes
 or files from the editor's docks onto the Neovim view inserts the same text
 Godot's own script editor does.
 
-Status: early. Tested headless against Godot 4.7.1 with Neovim 0.12 and 0.9.
+![Neovim tab with a breakpoint sign and LSP diagnostics](docs/screenshots/breakpoints.png)
+
+## Requirements
+
+- **Godot 4.5 or newer.** The tests pass on 4.5.1, 4.6.1 and 4.7.1. On 4.4
+  the editor can be killed by `SIGPIPE` when Neovim stops, and 4.3 lacks
+  APIs the plugin uses.
+- **Neovim 0.9 or newer**, installed separately. 0.11+ is recommended for its
+  default LSP mappings.
+- **Platforms:** Linux is tested. macOS is in daily use. Windows should work
+  but is untested; reports welcome.
 
 ## Install
+
+From the Asset Library: search for "Neovim Script Editor", install, then
+enable it as below.
 
 Copy `addons/godot_nvim` into your project's `addons/` folder, then enable
 **Neovim Script Editor** under Project → Project Settings → Plugins. A
@@ -33,6 +46,8 @@ Neovim starts in the project folder and loads your usual config.
 - Drag files from the FileSystem dock to insert `"res://path"`, or with
   Ctrl/Cmd held, `const Name = preload("res://path")`.
 - `:w` saves, and Godot reloads the script, shader or JSON.
+- Like Godot's own script editor, unsaved Neovim buffers are written when you
+  save a scene or run the project, and Godot asks about them when it closes.
 - Neovim runs for as long as the editor does. `:q`, `:wq` and `:x` on the
   last window close the file but leave Neovim running. If Neovim exits anyway
   (`:qa`, a crash), it restarts on the last file.
@@ -50,6 +65,8 @@ Neovim starts in the project folder and loads your usual config.
 - Signs move with your edits. On `:w`, Godot's breakpoints move to match.
 - Double-clicking a breakpoint, an error or a stack frame in the debugger
   opens the file in Neovim at that line.
+
+![Ctrl-dropping two nodes inserts @onready vars](docs/screenshots/drag-and-drop.png)
 
 ## Language server
 
@@ -79,6 +96,8 @@ vim.api.nvim_create_autocmd("LspAttach", {
   end,
 })
 ```
+
+![Hover docs from Godot's language server](docs/screenshots/lsp-hover.png)
 
 ## Known gaps
 
