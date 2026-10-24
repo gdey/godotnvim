@@ -111,7 +111,24 @@ func save_all() -> void:
 		rpc.request_sync("nvim_command", ["silent! wall"])
 
 
+## Marks methods in [param path]'s buffer that scene signals connect to.
+## [param conns]: Dictionaries with method, signal, source, target, missing.
+func set_connections(path: String, conns: Array) -> void:
+	if attached:
+		rpc.request("nvim_exec_lua", ["godot_nvim.set_connections(...)",
+			[ProjectSettings.globalize_path(path), conns]])
+
+
+## Marks methods in [param path]'s buffer that override a base class method.
+## [param methods]: method name -> base script path or engine class name.
+func set_overrides(path: String, methods: Dictionary) -> void:
+	if attached:
+		rpc.request("nvim_exec_lua", ["godot_nvim.set_overrides(...)",
+			[ProjectSettings.globalize_path(path), methods]])
+
+
 ## Shows [param lines] (1-based) as breakpoint signs in [param path]'s buffer.
+
 func set_breakpoints(path: String, lines: Array) -> void:
 	if attached:
 		rpc.request("nvim_exec_lua", ["godot_nvim.set_breakpoints(...)",

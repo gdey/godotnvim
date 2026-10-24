@@ -162,20 +162,186 @@ function M.buf_breakpoints(buf)
   return lines
 end
 
-function M.toggle_breakpoint()
-  local buf = vim.api.nvim_get_current_buf()
-  local line = vim.api.nvim_win_get_cursor(0)[1]
+-- Toggles the breakpoint on [line] of [buf], by default the cursor line.
+function M.toggle_breakpoint(buf, line)
+  buf = buf or vim.api.nvim_get_current_buf()
+  line = line or vim.api.nvim_win_get_cursor(0)[1]
   local enabled = not vim.tbl_contains(M.buf_breakpoints(buf), line)
   vim.rpcnotify(chan, "godot_nvim_set_breakpoint", bufname(buf), line, enabled)
 end
 
-vim.api.nvim_create_user_command("GodotToggleBreakpoint", M.toggle_breakpoint,
+-- Expr mapping for <2-LeftMouse>: a double-click in the gutter (sign,
+-- number and fold columns) toggles the breakpoint on that line; anywhere
+-- else keeps the usual double-click.
+function M.gutter_double_click()
+  local pos = vim.fn.getmousepos()
+  local info = pos.winid ~= 0 and vim.fn.getwininfo(pos.winid)[1]
+  if info and pos.line > 0 and pos.wincol <= info.textoff then
+    M.toggle_breakpoint(vim.api.nvim_win_get_buf(pos.winid), pos.line)
+    return ""
+  end
+  return "<2-LeftMouse>"
+end
+
+vim.api.nvim_create_user_command("GodotToggleBreakpoint", function() M.toggle_breakpoint() end,
   { desc = "Toggle a Godot debugger breakpoint on the cursor line" })
+
+-- Signal connections and overrides ---------------------------------------
+-- Like Godot's script editor, mark methods that signals in the edited scene
+-- are connected to, methods that override a base class method, and warn
+-- about connections to methods that don't exist. Godot pushes the lists with
+-- set_connections and set_overrides.
+
+local slot_ns = vim.api.nvim_create_namespace("godot_nvim_slots")
+local missing_ns = vim.api.nvim_create_namespace("godot_nvim_missing_methods")
+-- Godot's own icon colors, so the signs stand out whatever the colorscheme.
+-- `default` lets a colorscheme or config define the groups instead.
+local function define_method_highlights()
+  vim.api.nvim_set_hl(0, "GodotSignalSlot", { default = true, fg = "#5fff97", ctermfg = 84, bold = true })
+  vim.api.nvim_set_hl(0, "GodotMethodOverride", { default = true, fg = "#5fb2ff", ctermfg = 75, bold = true })
+end
+define_method_highlights()
+vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = define_method_highlights })
+
+-- absolute path -> list of { method, signal, source, target, missing }
+M.connections = {}
+-- absolute path -> { method name -> base script path or engine class }
+M.overrides = {}
+
+-- Returns method name -> 1-based line of its first "func" in [buf], and the
+-- same for top-level, non-static funcs (the only ones that can override).
+local function func_lines(buf)
+  local any, top = {}, {}
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+    local name = l:match("^%s*func%s+([%w_]+)%s*%(") or l:match("^%s*static%s+func%s+([%w_]+)%s*%(")
+    if name and not any[name] then
+      any[name] = i
+    end
+    name = l:match("^func%s+([%w_]+)%s*%(")
+    if name and not top[name] then
+      top[name] = i
+    end
+  end
+  return any, top
+end
+
+local function apply_method_signs(buf)
+  if not vim.api.nvim_buf_is_loaded(buf) then
+    return
+  end
+  vim.api.nvim_buf_clear_namespace(buf, slot_ns, 0, -1)
+  local name = bufname(buf)
+  local conns = M.connections[name] or {}
+  local overrides = M.overrides[name] or {}
+  local any, top = func_lines(buf)
+  local signs, diags = {}, {} -- line -> { slot = bool, override = bool }
+  for _, c in ipairs(conns) do
+    local l = any[c.method]
+    if l then
+      signs[l] = signs[l] or {}
+      signs[l].slot = true
+    elseif c.missing then
+      table.insert(diags, {
+        lnum = 0,
+        col = 0,
+        severity = vim.diagnostic.severity.WARN,
+        source = "godot",
+        message = string.format("Missing connected method '%s' for signal '%s' from node '%s' to node '%s'.",
+          c.method, c.signal, c.source, c.target),
+      })
+    end
+  end
+  for method, l in pairs(top) do
+    if overrides[method] then
+      signs[l] = signs[l] or {}
+      signs[l].override = true
+    end
+  end
+  for l, s in pairs(signs) do
+    local text, hl
+    if s.slot and s.override then
+      text, hl = vim.g.godot_nvim_override_slot_sign or "↱⇠", "GodotSignalSlot"
+    elseif s.slot then
+      text, hl = vim.g.godot_nvim_slot_sign or "⇠", "GodotSignalSlot"
+    else
+      text, hl = vim.g.godot_nvim_override_sign or "↱", "GodotMethodOverride"
+    end
+    vim.api.nvim_buf_set_extmark(buf, slot_ns, l - 1, 0, {
+      sign_text = text,
+      sign_hl_group = hl,
+      priority = 100, -- below breakpoints, which win the sign column
+    })
+  end
+  vim.diagnostic.set(missing_ns, buf, diags)
+end
+
+local function apply_to_path(path)
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if bufname(buf) == path then
+      apply_method_signs(buf)
+    end
+  end
+end
+
+function M.set_connections(path, conns)
+  M.connections[path] = conns
+  apply_to_path(path)
+end
+
+function M.set_overrides(path, methods)
+  M.overrides[path] = methods
+  apply_to_path(path)
+end
+
+-- Lists the signals connected to the function the cursor is in, and the
+-- base class method it overrides.
+function M.show_connections()
+  local buf = vim.api.nvim_get_current_buf()
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  local name, top
+  for i = row, 1, -1 do
+    local l = vim.api.nvim_buf_get_lines(buf, i - 1, i, false)[1]
+    name = l:match("^%s*func%s+([%w_]+)") or l:match("^%s*static%s+func%s+([%w_]+)")
+    if name then
+      top = l:match("^func%s") ~= nil
+      break
+    end
+  end
+  local out = {}
+  local base = top and (M.overrides[bufname(buf)] or {})[name]
+  if base then
+    table.insert(out, string.format("Overrides %s.%s()", base, name))
+  end
+  for _, c in ipairs(M.connections[bufname(buf)] or {}) do
+    if c.method == name then
+      table.insert(out, string.format("%s.%s -> %s.%s()", c.source, c.signal, c.target, c.method))
+    end
+  end
+  if #out == 0 then
+    vim.notify(name and ("No signals connected to " .. name .. "()") or "Not inside a function")
+  else
+    vim.notify(table.concat(out, "\n"))
+  end
+end
+
+vim.api.nvim_create_user_command("GodotConnections", M.show_connections,
+  { desc = "Show the Godot signals connected to, and the method overridden by, the function under the cursor" })
+
+vim.api.nvim_create_autocmd({ "TextChanged", "InsertLeave" }, {
+  group = group,
+  callback = function(ev)
+    local name = bufname(ev.buf)
+    if M.connections[name] or M.overrides[name] then
+      apply_method_signs(ev.buf)
+    end
+  end,
+})
 
 vim.api.nvim_create_autocmd({ "BufReadPost", "BufWinEnter" }, {
   group = group,
   callback = function(ev)
     apply_breakpoints(ev.buf)
+    apply_method_signs(ev.buf)
   end,
 })
 
@@ -185,7 +351,17 @@ vim.api.nvim_create_autocmd("FileType", {
   callback = function(ev)
     -- F9 toggles breakpoints in Godot's editor too; keep the user's own F9.
     if vim.fn.maparg("<F9>", "n") == "" then
-      vim.keymap.set("n", "<F9>", M.toggle_breakpoint, { buffer = ev.buf, desc = "Toggle Godot breakpoint" })
+      vim.keymap.set("n", "<F9>", function() M.toggle_breakpoint() end,
+        { buffer = ev.buf, desc = "Toggle Godot breakpoint" })
+    end
+    if vim.fn.maparg("<2-LeftMouse>", "n") == "" then
+      vim.keymap.set("n", "<2-LeftMouse>", M.gutter_double_click,
+        { buffer = ev.buf, expr = true, desc = "Toggle Godot breakpoint from the gutter" })
+    end
+    -- Keep a gutter to click, as Godot's editor does, unless the user chose
+    -- otherwise.
+    if vim.opt_local.signcolumn:get() == "auto" then
+      vim.opt_local.signcolumn = "yes"
     end
   end,
 })
@@ -203,6 +379,10 @@ vim.api.nvim_create_autocmd("BufEnter", {
     vim.rpcnotify(chan, "godot_nvim_buf_enter", bufname(ev.buf))
   end,
 })
+-- A file Godot opened before this script loaded entered without us.
+if bufname(0) ~= "" then
+  vim.rpcnotify(chan, "godot_nvim_buf_enter", bufname(0))
+end
 
 -- Attaches Godot's language server to [buf], unless the user's own config
 -- already handles gdscript. Scheduled so that config's FileType handlers

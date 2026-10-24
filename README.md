@@ -62,12 +62,37 @@ Neovim starts in the project folder and loads your usual config.
   Breakpoints** is on, the signs turn grey (`GodotBreakpointSkipped`, linked
   to `Comment`).
 - `F9` (Godot's key) or `:GodotToggleBreakpoint` toggles a breakpoint on the
-  cursor line. If you already map `F9`, the plugin leaves your mapping alone.
+  cursor line, and double-clicking the gutter (sign or number column) toggles
+  one on the clicked line. If you already map `F9` or `<2-LeftMouse>`, the
+  plugin leaves your mapping alone. So there's always a gutter to click,
+  GDScript buffers get `signcolumn=yes` when yours is the default `auto`.
 - Signs move with your edits. On `:w`, Godot's breakpoints move to match.
 - Double-clicking a breakpoint, an error or a stack frame in the debugger
   opens the file in Neovim at that line.
 
 ![Ctrl-dropping two nodes inserts @onready vars](docs/screenshots/drag-and-drop.png)
+
+## Signal connections and overrides
+
+Like Godot's script editor, the sign column marks methods:
+
+- `⇠` on a method that a signal in the edited scene is connected to
+  (highlight `GodotSignalSlot`, green).
+- `↱` on a method that overrides one from a base class, such as `_ready()` or
+  a method of a base script (highlight `GodotMethodOverride`, blue).
+- `↱⇠` when both apply.
+
+The colors are the ones Godot's own icons use. To restyle them, define the
+highlight groups in your config, for example
+`vim.api.nvim_set_hl(0, "GodotMethodOverride", { fg = "#ffcc00", bold = true })`.
+
+Change the glyphs with `vim.g.godot_nvim_slot_sign`,
+`vim.g.godot_nvim_override_sign` and `vim.g.godot_nvim_override_slot_sign`.
+`:GodotConnections` shows the signals connected to the function under the
+cursor and the method it overrides. A connection to a method the script
+doesn't have shows up as a warning diagnostic. Signal signs follow the scene
+you're editing and update when you connect or disconnect signals in the Node
+dock; override signs update as you type, and follow `extends` when you save.
 
 ## Language server
 

@@ -23,6 +23,9 @@ var _bp_timer: Timer
 ## echoes don't move the Neovim cursor.
 var _driving_script_editor := false
 var _skip_breakpoints := false
+## Connections last sent to Neovim, for _current_path.
+var _sent_connections := []
+var _sent_connections_path := ""
 var _skip_buttons: Array[Button] = []
 var _unsaved := PackedStringArray()
 
@@ -45,7 +48,11 @@ func _enter_tree() -> void:
 	view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	view.drop_builder = _build_drop
 	view.file_saved.connect(_on_file_saved)
-	view.buffer_entered.connect(func(p: String) -> void: _current_path = p)
+	view.buffer_entered.connect(func(p: String) -> void:
+		_current_path = p
+		_sync_overrides(p)
+		_sync_connections(true))
+	scene_changed.connect(func(_root: Node) -> void: _sync_connections(true))
 	view.breakpoint_requested.connect(_set_breakpoint)
 	view.modified_changed.connect(func(paths: PackedStringArray) -> void: _unsaved = paths)
 	view.attached_to_nvim.connect(_sync_breakpoints.bind(true))
@@ -62,6 +69,7 @@ func _enter_tree() -> void:
 	_bp_timer = Timer.new()
 	_bp_timer.wait_time = 0.5
 	_bp_timer.timeout.connect(_sync_breakpoints)
+	_bp_timer.timeout.connect(_sync_connections)
 	add_child(_bp_timer)
 	_bp_timer.start()
 
@@ -172,6 +180,8 @@ func _on_file_saved(path: String, breakpoints: Array) -> void:
 		return
 	var se := EditorInterface.get_script_editor()
 	se.reload_open_files()
+	# The script's extends line may have changed.
+	_sync_overrides(path)
 	# Edits move Neovim's signs; make Godot's list follow them.
 	var have: Array = _godot_breakpoints().get(path, [])
 	for line in have:
@@ -213,6 +223,103 @@ func _godot_breakpoints() -> Dictionary:
 	for p in out:
 		out[p].sort()
 	return out
+
+
+# --- Signal connections ------------------------------------------------------
+
+## Sends the edited scene's signal connections into the current script's
+## methods, as Godot's script editor shows them in its gutter.
+func _sync_connections(force := false) -> void:
+	if view == null or not view.attached or not _current_path.ends_with(".gd"):
+		return
+	var conns := _connections_for(_current_path)
+	if force or _current_path != _sent_connections_path or conns != _sent_connections:
+		_sent_connections = conns
+		_sent_connections_path = _current_path
+		view.set_connections(_current_path, conns)
+
+
+func _connections_for(path: String) -> Array:
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null or not ResourceLoader.exists(path):
+		return []
+	var script := load(path) as Script
+	if script == null:
+		return []
+	var out := []
+	for node in _nodes_with_script(root, script):
+		for c in node.get_incoming_connections():
+			if not (c["flags"] & CONNECT_PERSIST):
+				continue
+			var source := (c["signal"] as Signal).get_object() as Node
+			# Deleted nodes linger for undo; Godot skips them too.
+			if source == null or not source.is_inside_tree():
+				continue
+			var method := String((c["callable"] as Callable).get_method())
+			out.append({
+				"method": method,
+				"signal": String((c["signal"] as Signal).get_name()),
+				"source": _scene_path(root, source),
+				"target": _scene_path(root, node),
+				"missing": not _script_has_method(script, method),
+			})
+	return out
+
+
+## Sends the methods [param path]'s base classes define, so Neovim can mark
+## the ones the script overrides, as Godot's script editor does.
+func _sync_overrides(path: String) -> void:
+	if view == null or not view.attached or not path.ends_with(".gd") or not ResourceLoader.exists(path):
+		return
+	var script := load(path) as Script
+	# A script that doesn't parse has no base type; keep the last signs.
+	if script == null or script.get_instance_base_type() == &"":
+		return
+	view.set_overrides(path, overridable_methods(script))
+
+
+## Method name -> where it's defined: the nearest base script's path, or the
+## engine class name. Mirrors ScriptTextEditor's override lookup.
+static func overridable_methods(script: Script) -> Dictionary:
+	var out := {}
+	var s := script.get_base_script()
+	while s != null:
+		for m in s.get_script_method_list():
+			if not out.has(m["name"]):
+				out[m["name"]] = s.resource_path
+		s = s.get_base_script()
+	var cls := script.get_instance_base_type()
+	while cls != &"":
+		for m in ClassDB.class_get_method_list(cls, true):
+			if not out.has(m["name"]):
+				out[m["name"]] = String(cls)
+		cls = ClassDB.get_parent_class(cls)
+	return out
+
+
+static func _nodes_with_script(n: Node, script: Script) -> Array[Node]:
+	var out: Array[Node] = []
+	if n.get_script() == script:
+		out.append(n)
+	for c in n.get_children():
+		out.append_array(_nodes_with_script(c, script))
+	return out
+
+
+static func _scene_path(root: Node, n: Node) -> String:
+	return String(root.name) if n == root else String(root.get_path_to(n))
+
+
+static func _script_has_method(script: Script, method: String) -> bool:
+	if ClassDB.class_has_method(script.get_instance_base_type(), method):
+		return true
+	var s := script
+	while s != null:
+		for m in s.get_script_method_list():
+			if m["name"] == method:
+				return true
+		s = s.get_base_script()
+	return false
 
 
 func _sync_breakpoints(force := false) -> void:
