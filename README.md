@@ -38,6 +38,21 @@ Neovim starts in the project folder and loads your usual config.
   file (or an empty placeholder) shows, and Neovim keeps running. If Neovim exits anyway
   (`:qa`, a crash), it restarts on the last file.
 
+## Running the project
+
+Godot's run shortcuts work while typing in Neovim: Run Project, Run Current
+Scene, Run Specific Scene, Pause and Stop (F5, F6, Ctrl+Shift+F5, F7, F8; on
+macOS Cmd+B, Cmd+R, Cmd+Shift+R, Ctrl+Cmd+Y, Cmd+.). They follow your
+bindings in Editor Settings → Shortcuts. The same actions are commands:
+
+| Command | Does |
+| --- | --- |
+| `:GodotRun` | Run the project's main scene |
+| `:GodotRunCurrent` | Run the scene open in the editor |
+| `:GodotRunScene [file]` | Run a `.tscn`/`.scn` (completes file names); without a file, pick one as Godot does |
+| `:GodotPause` | Pause or resume the running project |
+| `:GodotStop` | Stop the running project |
+
 ## Debugger
 
 - Breakpoints show as `●` signs in Neovim's sign column (highlight group

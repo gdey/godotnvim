@@ -250,6 +250,29 @@ func _test_view_drop() -> void:
 	var hl: Array = await _req(view, "nvim_exec_lua", ["local h = function(n) return vim.api.nvim_get_hl(0, {name = n, link = false}) end return {vim.g.colors_name, h('Normal').bg, h('Keyword').fg, h('PreProc').fg, h('GodotBreakpoint').fg, h('GodotMethodOverride').fg ~= nil, vim.o.background}", []])
 	check(hl[1] == ["godot", 0x1a1a1a, 0xff7085, 0xffb373, 0xff7869, true, "dark"], "godot colorscheme applied: %s" % [hl])
 	check(await _wait(func(): return view.grid.default_bg == Color("#1a1a1a")), "view background follows the theme: %s" % [view.grid.default_bg])
+	# Editor shortcuts pass through; other keys still reach Neovim.
+	view.rpc.request("nvim_command", ["nnoremap <F5> <Cmd>let g:f5 = get(g:, 'f5', 0) + 1<CR>"])
+	var f5 := Shortcut.new()
+	var f5_event := InputEventKey.new()
+	f5_event.keycode = KEY_F5
+	f5.events = [f5_event]
+	view.passthrough_shortcuts = [f5]
+	var press := InputEventKey.new()
+	press.keycode = KEY_F5
+	press.pressed = true
+	view._gui_input(press)
+	view.passthrough_shortcuts = []
+	view._gui_input(press)
+	var f5_count: Array = await _req(view, "nvim_eval", ["get(g:, 'f5', 0)"])
+	check(f5_count[1] == 1, "passthrough shortcut skips Neovim: %s" % [f5_count])
+	# :Godot run commands.
+	var runs := []
+	view.run_requested.connect(func(a, arg): runs.append([a, arg]))
+	view.rpc.request("nvim_command", ["GodotRun"])
+	view.rpc.request("nvim_command", ["GodotRunScene " + ProjectSettings.globalize_path("res://main.tscn")])
+	view.rpc.request("nvim_command", ["GodotStop"])
+	await _wait(func(): return runs.size() >= 3)
+	check(runs == [["project", ""], ["scene", "res://main.tscn"], ["stop", ""]], "run commands: %s" % [runs])
 	# Drop onto row 2 ("func _ready():") inserts the line above it.
 	view.drop_text_at(Vector2i(3, 2), {"kind": "lines", "text": "@onready var player: Node = $Player\n"})
 	check(await _wait(func(): return view.grid.row_string(2).begins_with("@onready var player")), "onready line inserted at drop row")
