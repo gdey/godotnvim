@@ -132,6 +132,10 @@ func _build_drop(data: Variant, modifier: bool) -> Dictionary:
 func _on_file_saved(path: String, breakpoints: Array) -> void:
 	if not path.begins_with("res://"):
 		return
+	# Reloading hands focus to Godot's (hidden) script editor; keep typing
+	# in Neovim after :w.
+	if view.has_focus():
+		_keep_focus.call_deferred()
 	EditorInterface.get_resource_filesystem().update_file(path)
 	if ResourceLoader.has_cached(path):
 		# Push the new text into the copy Godot already has loaded, so open
@@ -157,6 +161,11 @@ func _on_file_saved(path: String, breakpoints: Array) -> void:
 	for line in breakpoints:
 		if not have.has(line):
 			_set_breakpoint(path, line, true)
+
+
+func _keep_focus() -> void:
+	if view and view.is_visible_in_tree():
+		view.grab_focus()
 
 
 # --- Debugger ------------------------------------------------------------------
