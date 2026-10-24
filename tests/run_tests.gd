@@ -189,7 +189,7 @@ func _test_view_drop() -> void:
 	check(lines.size() > 0 and lines[0][4] == "    p$HUDass", "text inserted at cell: %s" % [lines[0][4] if lines.size() else lines])
 	view.rpc.request("nvim_command", ["write"])
 	var saved := []
-	view.file_saved.connect(func(p): saved.append(p))
+	view.file_saved.connect(func(p, _bps): saved.append(p))
 	check(await _wait(func(): return saved.size() > 0), "save notification")
 	view.stop()
 	view.queue_free()

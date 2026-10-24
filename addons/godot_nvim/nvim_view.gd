@@ -7,8 +7,12 @@
 class_name NvimView
 extends Control
 
-signal file_saved(path: String)
+signal attached_to_nvim
+## [param breakpoints]: the buffer's 1-based breakpoint lines at save time.
+signal file_saved(path: String, breakpoints: Array)
 signal buffer_entered(path: String)
+## The user toggled a breakpoint in Neovim; [param line] is 1-based.
+signal breakpoint_requested(path: String, line: int, enabled: bool)
 signal nvim_exited
 
 @export var nvim_path := "nvim"
@@ -85,9 +89,16 @@ func open_file(path: String, line := 0, column := 0) -> void:
 	var abs_path := ProjectSettings.globalize_path(path)
 	rpc.request("nvim_exec_lua", [
 		"local p, l, c = ... vim.cmd.drop(vim.fn.fnameescape(p))" +
-		" if l > 0 then pcall(vim.api.nvim_win_set_cursor, 0, {l, math.max(c - 1, 0)}) end",
+		" if l > 0 then pcall(vim.api.nvim_win_set_cursor, 0, {l, math.max(c - 1, 0)}) vim.cmd('normal! zz') end",
 		[abs_path, line, column]])
 	grab_focus()
+
+
+## Shows [param lines] (1-based) as breakpoint signs in [param path]'s buffer.
+func set_breakpoints(path: String, lines: Array) -> void:
+	if attached:
+		rpc.request("nvim_exec_lua", ["godot_nvim.set_breakpoints(...)",
+			[ProjectSettings.globalize_path(path), lines]])
 
 
 func cell_size() -> Vector2:
@@ -107,6 +118,7 @@ func _on_api_info(err: Variant, res: Variant) -> void:
 	var dims := _grid_dims()
 	rpc.request("nvim_ui_attach", [dims.x, dims.y, {"ext_linegrid": true, "rgb": true}])
 	attached = true
+	attached_to_nvim.emit()
 
 
 func _on_notification(method: String, params: Array) -> void:
@@ -114,7 +126,9 @@ func _on_notification(method: String, params: Array) -> void:
 		"redraw":
 			grid.apply(params)
 		"godot_nvim_saved":
-			file_saved.emit(ProjectSettings.localize_path(params[0]))
+			file_saved.emit(ProjectSettings.localize_path(params[0]), params[1] if params.size() > 1 else [])
+		"godot_nvim_set_breakpoint":
+			breakpoint_requested.emit(ProjectSettings.localize_path(params[0]), params[1], params[2])
 		"godot_nvim_buf_enter":
 			buffer_entered.emit(ProjectSettings.localize_path(params[0]))
 

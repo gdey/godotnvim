@@ -34,6 +34,18 @@ Neovim starts in the project folder and loads your usual config.
   Ctrl/Cmd held, `const Name = preload("res://path")`.
 - `:w` saves, and Godot reloads the script, shader or JSON.
 
+## Debugger
+
+- Breakpoints show as `●` signs in Neovim's sign column (highlight group
+  `GodotBreakpoint`, linked to `DiagnosticError`). They stay in sync with
+  Godot's Breakpoints list, whether you set them from Neovim, Godot's own
+  editor gutter, or the debugger panel.
+- `F9` (Godot's key) or `:GodotToggleBreakpoint` toggles a breakpoint on the
+  cursor line. If you already map `F9`, the plugin leaves your mapping alone.
+- Signs move with your edits. On `:w`, Godot's breakpoints move to match.
+- Double-clicking a breakpoint, an error or a stack frame in the debugger
+  opens the file in Neovim at that line.
+
 ## Language server
 
 The plugin connects `.gd` buffers to the GDScript language server that the
@@ -65,11 +77,8 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
 ## Known gaps
 
-- Godot opens some scripts with `EditorInterface.edit_script()`, for
-  example when jumping to an error or a debugger breakpoint. Those still open
-  in Godot's built-in script editor. The fix is either to route Godot's
-  "external editor" setting to the embedded Neovim, or to add an engine hook
-  through a local Godot patch.
+- Godot's breakpoint API lives in its own script editor, so the plugin keeps
+  scripts with breakpoints open there in the background.
 - Godot's own editors still load the file in the background: plain text files
   get a tab in the script editor, and shaders may open the shader editor
   panel. The engine does this before any plugin sees the file. Edit in Neovim
@@ -88,6 +97,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 | `nvim_keys.gd` | Turns Godot key events into Neovim key notation |
 | `drop_text.gd` | Builds the text for dropped nodes and files, matching Godot's script editor |
 | `godot_nvim.lua` | Neovim-side helpers: save and buffer notifications, drop insertion |
+| `debugger_bridge.gd` | EditorDebuggerPlugin: forwards the debugger's go-to-line and breakpoint events |
 | `plugin.gd` | EditorPlugin: the main-screen tab, opening scripts, editor settings |
 
 ## Tests

@@ -10,10 +10,88 @@ _G.godot_nvim = M
 
 local group = vim.api.nvim_create_augroup("godot_nvim", { clear = true })
 
+-- Breakpoints --------------------------------------------------------------
+-- Godot owns the breakpoint list; it pushes it here with set_breakpoints and
+-- we draw it as signs. Signs are extmarks, so they follow edits; on save we
+-- send their new lines back so Godot's list matches the file on disk.
+
+local bp_ns = vim.api.nvim_create_namespace("godot_nvim_breakpoints")
+vim.api.nvim_set_hl(0, "GodotBreakpoint", { default = true, link = "DiagnosticError" })
+
+-- absolute path -> sorted 1-based line numbers
+M.breakpoints = {}
+
+local function apply_breakpoints(buf)
+  if not vim.api.nvim_buf_is_loaded(buf) then
+    return
+  end
+  vim.api.nvim_buf_clear_namespace(buf, bp_ns, 0, -1)
+  local count = vim.api.nvim_buf_line_count(buf)
+  for _, l in ipairs(M.breakpoints[vim.api.nvim_buf_get_name(buf)] or {}) do
+    if l >= 1 and l <= count then
+      vim.api.nvim_buf_set_extmark(buf, bp_ns, l - 1, 0, {
+        sign_text = "●",
+        sign_hl_group = "GodotBreakpoint",
+      })
+    end
+  end
+end
+
+function M.set_breakpoints(path, lines)
+  M.breakpoints[path] = lines
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_get_name(buf) == path then
+      apply_breakpoints(buf)
+    end
+  end
+end
+
+-- Current 1-based breakpoint lines of [buf], as moved by edits.
+function M.buf_breakpoints(buf)
+  local lines, seen = {}, {}
+  for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, bp_ns, 0, -1, {})) do
+    local l = m[2] + 1
+    if not seen[l] then
+      seen[l] = true
+      table.insert(lines, l)
+    end
+  end
+  table.sort(lines)
+  return lines
+end
+
+function M.toggle_breakpoint()
+  local buf = vim.api.nvim_get_current_buf()
+  local line = vim.api.nvim_win_get_cursor(0)[1]
+  local enabled = not vim.tbl_contains(M.buf_breakpoints(buf), line)
+  vim.rpcnotify(chan, "godot_nvim_set_breakpoint", vim.api.nvim_buf_get_name(buf), line, enabled)
+end
+
+vim.api.nvim_create_user_command("GodotToggleBreakpoint", M.toggle_breakpoint,
+  { desc = "Toggle a Godot debugger breakpoint on the cursor line" })
+
+vim.api.nvim_create_autocmd({ "BufReadPost", "BufWinEnter" }, {
+  group = group,
+  callback = function(ev)
+    apply_breakpoints(ev.buf)
+  end,
+})
+
+vim.api.nvim_create_autocmd("FileType", {
+  group = group,
+  pattern = "gdscript",
+  callback = function(ev)
+    -- F9 toggles breakpoints in Godot's editor too; keep the user's own F9.
+    if vim.fn.maparg("<F9>", "n") == "" then
+      vim.keymap.set("n", "<F9>", M.toggle_breakpoint, { buffer = ev.buf, desc = "Toggle Godot breakpoint" })
+    end
+  end,
+})
+
 vim.api.nvim_create_autocmd("BufWritePost", {
   group = group,
   callback = function(ev)
-    vim.rpcnotify(chan, "godot_nvim_saved", vim.api.nvim_buf_get_name(ev.buf))
+    vim.rpcnotify(chan, "godot_nvim_saved", vim.api.nvim_buf_get_name(ev.buf), M.buf_breakpoints(ev.buf))
   end,
 })
 
