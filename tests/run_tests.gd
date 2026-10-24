@@ -256,7 +256,8 @@ func _test_view_drop() -> void:
 	check(hl[1] == ["godot", 0x1a1a1a, 0xff7085, 0xffb373, 0xff7869, true, "dark"], "godot colorscheme applied: %s" % [hl])
 	check(await _wait(func(): return view.grid.default_bg == Color("#1a1a1a")), "view background follows the theme: %s" % [view.grid.default_bg])
 	# Editor shortcuts pass through; other keys still reach Neovim.
-	view.rpc.request("nvim_command", ["nnoremap <F5> <Cmd>let g:f5 = get(g:, 'f5', 0) + 1<CR>"])
+	# Wait for the mapping: nvim_input is handled ahead of queued requests.
+	await _req(view, "nvim_command", ["nnoremap <F5> <Cmd>let g:f5 = get(g:, 'f5', 0) + 1<CR>"])
 	var f5 := Shortcut.new()
 	var f5_event := InputEventKey.new()
 	f5_event.keycode = KEY_F5
@@ -268,7 +269,15 @@ func _test_view_drop() -> void:
 	view._gui_input(press)
 	view.passthrough_shortcuts = []
 	view._gui_input(press)
-	var f5_count: Array = await _req(view, "nvim_eval", ["get(g:, 'f5', 0)"])
+	# Wait for the mapping to run, then give a stray second F5 time to arrive.
+	var f5_count: Array = [null, 0]
+	for i in 30:
+		f5_count = await _req(view, "nvim_eval", ["get(g:, 'f5', 0)"])
+		if f5_count[1] >= 1:
+			break
+		await create_timer(0.1).timeout
+	await create_timer(0.3).timeout
+	f5_count = await _req(view, "nvim_eval", ["get(g:, 'f5', 0)"])
 	check(f5_count[1] == 1, "passthrough shortcut skips Neovim: %s" % [f5_count])
 	# :Godot run commands.
 	var runs := []
