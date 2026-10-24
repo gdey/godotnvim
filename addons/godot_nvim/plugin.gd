@@ -22,6 +22,8 @@ var _bp_timer: Timer
 ## Set while we drive Godot's script editor ourselves, so its "go to line"
 ## echoes don't move the Neovim cursor.
 var _driving_script_editor := false
+var _skip_breakpoints := false
+var _skip_buttons: Array[Button] = []
 
 
 func _enter_tree() -> void:
@@ -188,6 +190,10 @@ func _godot_breakpoints() -> Dictionary:
 func _sync_breakpoints(force := false) -> void:
 	if view == null or not view.attached:
 		return
+	var skip := _is_skipping_breakpoints()
+	if force or skip != _skip_breakpoints:
+		_skip_breakpoints = skip
+		view.set_skip_breakpoints(skip)
 	var now := _godot_breakpoints()
 	var paths := now.keys()
 	for p in _breakpoints:
@@ -198,6 +204,34 @@ func _sync_breakpoints(force := false) -> void:
 		if force or lines != _breakpoints.get(p, []):
 			view.set_breakpoints(p, lines)
 	_breakpoints = now
+
+
+## Whether the debugger's "Skip Breakpoints" toggle is on. Godot doesn't
+## expose this to plugins, so read it off the toggle button: its icon is
+## DebugSkipBreakpointsOn while skipping. With several debugger sessions,
+## the visible one wins, as in EditorDebuggerNode.is_skip_breakpoints().
+func _is_skipping_breakpoints() -> bool:
+	if _skip_buttons.is_empty() or not is_instance_valid(_skip_buttons[0]):
+		_skip_buttons = _find_skip_buttons()
+	if _skip_buttons.is_empty():
+		return false
+	var on_icon := EditorInterface.get_editor_theme().get_icon("DebugSkipBreakpointsOn", "EditorIcons")
+	var pick: Button = _skip_buttons[0]
+	for b in _skip_buttons:
+		if is_instance_valid(b) and b.is_visible_in_tree():
+			pick = b
+			break
+	return pick.icon == on_icon
+
+
+func _find_skip_buttons() -> Array[Button]:
+	var out: Array[Button] = []
+	var base := EditorInterface.get_base_control()
+	for dbg in base.find_children("*", "ScriptEditorDebugger", true, false):
+		for b in dbg.find_children("*", "Button", true, false):
+			if b.tooltip_text == "Skip Breakpoints":
+				out.append(b)
+	return out
 
 
 ## Sets a breakpoint the way Godot's gutter does, so the debugger and a

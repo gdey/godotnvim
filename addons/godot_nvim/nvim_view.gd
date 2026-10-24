@@ -101,6 +101,12 @@ func set_breakpoints(path: String, lines: Array) -> void:
 			[ProjectSettings.globalize_path(path), lines]])
 
 
+## Greys out breakpoint signs while the debugger skips breakpoints.
+func set_skip_breakpoints(skip: bool) -> void:
+	if attached:
+		rpc.request("nvim_exec_lua", ["godot_nvim.set_skip_breakpoints(...)", [skip]])
+
+
 func cell_size() -> Vector2:
 	return _cell
 

@@ -39,7 +39,9 @@ Neovim starts in the project folder and loads your usual config.
 - Breakpoints show as `●` signs in Neovim's sign column (highlight group
   `GodotBreakpoint`, linked to `DiagnosticError`). They stay in sync with
   Godot's Breakpoints list, whether you set them from Neovim, Godot's own
-  editor gutter, or the debugger panel.
+  editor gutter, or the debugger panel. While the debugger's **Skip
+  Breakpoints** is on, the signs turn grey (`GodotBreakpointSkipped`, linked
+  to `Comment`).
 - `F9` (Godot's key) or `:GodotToggleBreakpoint` toggles a breakpoint on the
   cursor line. If you already map `F9`, the plugin leaves your mapping alone.
 - Signs move with your edits. On `:w`, Godot's breakpoints move to match.

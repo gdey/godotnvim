@@ -17,9 +17,12 @@ local group = vim.api.nvim_create_augroup("godot_nvim", { clear = true })
 
 local bp_ns = vim.api.nvim_create_namespace("godot_nvim_breakpoints")
 vim.api.nvim_set_hl(0, "GodotBreakpoint", { default = true, link = "DiagnosticError" })
+-- Used while the debugger's "Skip Breakpoints" is on.
+vim.api.nvim_set_hl(0, "GodotBreakpointSkipped", { default = true, link = "Comment" })
 
 -- absolute path -> sorted 1-based line numbers
 M.breakpoints = {}
+M.skip_breakpoints = false
 
 local function apply_breakpoints(buf)
   if not vim.api.nvim_buf_is_loaded(buf) then
@@ -31,7 +34,7 @@ local function apply_breakpoints(buf)
     if l >= 1 and l <= count then
       vim.api.nvim_buf_set_extmark(buf, bp_ns, l - 1, 0, {
         sign_text = "●",
-        sign_hl_group = "GodotBreakpoint",
+        sign_hl_group = M.skip_breakpoints and "GodotBreakpointSkipped" or "GodotBreakpoint",
       })
     end
   end
@@ -43,6 +46,13 @@ function M.set_breakpoints(path, lines)
     if vim.api.nvim_buf_get_name(buf) == path then
       apply_breakpoints(buf)
     end
+  end
+end
+
+function M.set_skip_breakpoints(skip)
+  M.skip_breakpoints = skip
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    apply_breakpoints(buf)
   end
 end
 
