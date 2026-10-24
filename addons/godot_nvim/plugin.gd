@@ -62,12 +62,16 @@ func _make_visible(visible: bool) -> void:
 			view.grab_focus()
 
 
-## File-backed GDScript, plus plain text files (Godot's internal TextFile
-## class, which is how the FileSystem dock opens .cfg, .txt, .md, ...).
-## Built-in scripts (path contains "::") stay in Godot's editor since
-## Neovim can't open them.
+## Resources whose file is plain source text. TextFile is Godot's internal
+## class for .cfg, .txt, .md, ... opened from the FileSystem dock.
+## Scenes and .tres resources are text too but stay with their editors.
+const _TEXT_CLASSES := ["Script", "Shader", "ShaderInclude", "JSON", "TextFile"]
+
+
+## File-backed text resources. Built-in ones (path contains "::") stay in
+## Godot's editors since Neovim can't open them.
 func _handles(object: Object) -> bool:
-	if not (object is GDScript or object.is_class("TextFile")):
+	if not _TEXT_CLASSES.any(func(c: String) -> bool: return object.is_class(c)):
 		return false
 	var path: String = object.resource_path
 	return path != "" and not path.contains("::")
@@ -93,11 +97,19 @@ func _on_file_saved(path: String) -> void:
 	if not path.begins_with("res://"):
 		return
 	EditorInterface.get_resource_filesystem().update_file(path)
-	if ResourceLoader.has_cached(path):
-		var script := ResourceLoader.load(path) as Script
-		if script:
-			script.source_code = FileAccess.get_file_as_string(path)
-			script.reload(true)
+	if not ResourceLoader.has_cached(path):
+		return
+	# Push the new text into the copy Godot already has loaded, so open
+	# scenes and editors see it without a restart.
+	var res := ResourceLoader.load(path)
+	var text := FileAccess.get_file_as_string(path)
+	if res is Script:
+		res.source_code = text
+		res.reload(true)
+	elif res is Shader or res is ShaderInclude:
+		res.code = text
+	elif res is JSON:
+		res.parse(text)
 
 
 func _ensure_settings() -> void:
