@@ -29,16 +29,26 @@ colors and selects the `.tet`.
 
 ## Requirements
 
-- Go 1.24+
 - [Neovim](https://neovim.io/) 0.10+ (`nvim` on your `PATH`, or `-nvim`/`$NVIM`)
 - git, to fetch schemes that aren't already on disk
+- Go 1.24+, only to run or build it from source
+
+## Get it
+
+Each [release](https://github.com/gdey/godotnvim/releases) has a prebuilt
+`vim2godot` for Linux, macOS and Windows (amd64 and arm64), as
+`colorscheme-<version>-<os>-<arch>.tar.gz` (`.zip` on Windows), with the same
+version number as the addon. Unpack it and put `vim2godot` on your `PATH`.
+`SHA256SUMS.txt` in the release has the checksums. On macOS, the binary isn't
+signed: if Gatekeeper blocks it, run `xattr -d com.apple.quarantine vim2godot`.
+
+Or run it from source in this directory: use `go run .` wherever the examples
+below say `vim2godot`.
 
 ## Convert a scheme
 
-From this directory:
-
 ```sh
-go run . https://vimcolorschemes.com/r/aejkatappaja/cendre
+vim2godot https://vimcolorschemes.com/r/aejkatappaja/cendre
 ```
 
 The argument can be a vimcolorschemes.com page, a GitHub URL, `owner/name`
@@ -59,11 +69,12 @@ written twice, as `<name>-dark` and `<name>-light`. Useful flags:
 | `-with owner/repo` | Repos the scheme needs on `'runtimepath'`, such as `rktjmp/lush.nvim` for zenbones |
 | `-install` | Also copy the `.tet` files into Godot's `text_editor_themes` folder |
 | `-nvim path` | Neovim to use (or set `$NVIM`) |
+| `-version` | Print the version |
 
 For example, only tokyonight's storm style, installed straight into Godot:
 
 ```sh
-go run . -scheme tokyonight-storm -install folke/tokyonight.nvim
+vim2godot -scheme tokyonight-storm -install folke/tokyonight.nvim
 ```
 
 **This runs the colorscheme's code** in Neovim (`nvim --headless --clean`), so

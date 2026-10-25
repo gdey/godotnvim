@@ -4,7 +4,7 @@ All notable changes to this plugin are listed here. Versions follow
 [Semantic Versioning](https://semver.org/); the version lives in
 `addons/godot_nvim/plugin.cfg`.
 
-## [Unreleased]
+## [0.3.0] - 2026-10-25
 
 ### Added
 
@@ -12,6 +12,10 @@ All notable changes to this plugin are listed here. Versions follow
   colorscheme (any on vimcolorschemes.com) into a Godot editor theme, a `.tet`
   for the script editor plus an EditorScript for the interface colors. It is
   not part of the addon download. cendre is included as an example.
+- Releases now also carry vim2godot prebuilt for Linux, macOS and Windows
+  (amd64 and arm64) as `colorscheme-<version>-<os>-<arch>` archives, with the
+  addon's version number, plus `SHA256SUMS.txt`. `vim2godot -version` prints
+  the version.
 - `:GodotRunFile [file]` runs a `@tool` script that extends `EditorScript`,
   as the script editor's File → Run does. Without a file it runs the current
   buffer, writing it first if it has unsaved changes. Files outside the
@@ -78,5 +82,6 @@ First release.
 - Asset Library packaging, and a release workflow that publishes the addon
   zip when a version tag is pushed.
 
+[0.3.0]: https://github.com/gdey/godotnvim/releases/tag/v0.3.0
 [0.2.0]: https://github.com/gdey/godotnvim/releases/tag/v0.2.0
 [0.1.0]: https://github.com/gdey/godotnvim/releases/tag/v0.1.0
