@@ -13,6 +13,7 @@ func _init() -> void:
 	_test_drop_text()
 	_test_overrides()
 	_test_editor_profiles()
+	_test_find_executable()
 	await _test_embed()
 	await _test_view_drop()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
@@ -195,6 +196,16 @@ func _test_overrides() -> void:
 	check(not methods.has("own"), "the script's own methods aren't overrides")
 
 
+func _test_find_executable() -> void:
+	print("find executable")
+	var find: Callable = load("res://addons/godot_nvim/plugin.gd")._find_executable
+	var godot := OS.get_executable_path()
+	check(find.call(godot) == godot, "absolute path to an existing file")
+	check(find.call(godot + "-missing") == "", "absolute path to a missing file")
+	check(find.call(godot.get_file()) == "" or find.call(godot.get_file()).is_absolute_path(), "bare name gives an absolute path or nothing")
+	check(find.call("godot-nvim-no-such-tool") == "", "missing bare name")
+
+
 func _wait(cond: Callable, ms := 3000) -> bool:
 	var deadline := Time.get_ticks_msec() + ms
 	while Time.get_ticks_msec() < deadline:
@@ -370,6 +381,7 @@ func _test_view_drop() -> void:
 	check(qf[1] == ["other.gd:3", "stats.gd:6"], ":GodotFunc lists partial matches: %s" % [qf])
 	view.rpc.request("nvim_command", ["cclose"])
 	view.rpc.request("nvim_command", ["cd " + cwd.replace(" ", "\\ ")])
+	await _test_format(view, cwd)
 	view.open_file(path)
 	await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node"))
 	# Unsaved buffers are reported, and save_all writes them.
@@ -388,3 +400,50 @@ func _test_view_drop() -> void:
 	if had_swap:
 		check(not FileAccess.file_exists(swap[1]), "swap file removed on stop")
 	view.queue_free()
+
+
+## Format on save, with sed standing in for gdformat (spaces to tabs).
+func _test_format(view: NvimView, cwd: String) -> void:
+	var fmt_path := cwd.path_join("scripts/fmt.gd")
+	FileAccess.open(fmt_path, FileAccess.WRITE).store_string("extends Node\n\nfunc a():\n    pass\n\nfunc b():\n    pass\n")
+	view.set_formatter(PackedStringArray(["sed", "s/^    /\t/"]), true)
+	view.open_file(fmt_path)
+	await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node"))
+	view.set_breakpoints(fmt_path, [6])
+	view.rpc.request("nvim_command", ["write"])
+	var bps: Array = await _req(view, "nvim_exec_lua", ["return godot_nvim.buf_breakpoints(0)", []])
+	check(FileAccess.get_file_as_string(fmt_path) == "extends Node\n\nfunc a():\n\tpass\n\nfunc b():\n\tpass\n",
+		"formatted on save: %s" % [FileAccess.get_file_as_string(fmt_path).c_escape()])
+	check(bps[1] == [6], "breakpoint stays on its line: %s" % [bps])
+	# Formatting off: written as is. :GodotFormat still formats.
+	view.set_formatter(PackedStringArray(["sed", "s/^    /\t/"]), false)
+	view.rpc.request("nvim_buf_set_lines", [0, 3, 4, false, ["    print(1)"]])
+	view.rpc.request("nvim_command", ["write"])
+	await _req(view, "nvim_eval", ["1"])
+	check(FileAccess.get_file_as_string(fmt_path).contains("\n    print(1)\n"), "format_on_save off writes as is")
+	await _req(view, "nvim_command", ["GodotFormat"])
+	var line: Array = await _req(view, "nvim_buf_get_lines", [0, 3, 4, false])
+	check(line[1] == ["\tprint(1)"], ":GodotFormat formats: %s" % [line])
+	# A failing or missing formatter still saves, unformatted.
+	for cmd in [["sed", "-e", "bogus{"], ["godot-nvim-no-such-formatter"]]:
+		view.set_formatter(PackedStringArray(cmd), true)
+		view.rpc.request("nvim_buf_set_lines", [0, 3, 4, false, ["    print(%d)" % cmd.size()]])
+		view.rpc.request("nvim_command", ["write"])
+		await _req(view, "nvim_eval", ["1"])
+		check(FileAccess.get_file_as_string(fmt_path).contains("\n    print(%d)\n" % cmd.size()), "%s: saved unformatted" % cmd[0])
+	# No formatter installed: saved as is, with no warning to dismiss.
+	view.set_formatter(PackedStringArray(), true)
+	view.rpc.request("nvim_buf_set_lines", [0, 3, 4, false, ["    print(0)"]])
+	view.rpc.request("nvim_command", ["write"])
+	await _req(view, "nvim_eval", ["1"])
+	check(FileAccess.get_file_as_string(fmt_path).contains("\n    print(0)\n"), "no formatter: saved as is")
+	# The real thing, when installed: GDQuest's formatter indents with tabs.
+	var gdquest: String = load("res://addons/godot_nvim/plugin.gd")._find_executable("gdscript-formatter")
+	if gdquest != "":
+		view.set_formatter(PackedStringArray([gdquest]), true)
+		view.rpc.request("nvim_buf_set_lines", [0, 0, -1, false, ["extends Node", "func a( ):", "    pass"]])
+		view.rpc.request("nvim_command", ["write"])
+		await _req(view, "nvim_eval", ["1"])
+		check(FileAccess.get_file_as_string(fmt_path) == "extends Node\n\n\nfunc a():\n\tpass\n",
+			"gdscript-formatter on save: %s" % FileAccess.get_file_as_string(fmt_path).c_escape())
+	view.set_formatter(PackedStringArray(), false)

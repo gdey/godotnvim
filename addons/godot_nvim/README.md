@@ -14,6 +14,8 @@ inside the Godot editor with Neovim's UI protocol.
   the line.
 - Signs mark methods connected to signals (`⇠`) and methods that override a
   base class (`↱`); `:GodotConnections` lists them.
+- GDScript is formatted on save with GDQuest's `gdscript-formatter` or
+  gdtoolkit's `gdformat`, whichever is installed (`:GodotFormat` on demand).
 - Neovim uses the script editor's colors and follows theme changes.
 - Godot's run, pause and stop shortcuts work while typing, and as
   `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`, `:GodotPause`, `:GodotStop`.

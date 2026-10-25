@@ -201,6 +201,39 @@ exactly but some contain it, they go to the quickfix list instead.
 
 ![Hover docs from Godot's language server](docs/screenshots/lsp-hover.png)
 
+## Formatting
+
+GDScript files are formatted when you save them (`:w`, or when Godot saves
+Neovim's buffers). Godot has no GDScript formatter of its own, so install one:
+
+- **[GDQuest's GDScript Formatter](https://github.com/GDQuest/GDScript-formatter)**
+  (`gdscript-formatter`), a single binary. If you use its Godot add-on, the
+  copy the add-on installed is picked up, along with its indent settings.
+- **[gdtoolkit](https://github.com/Scony/godot-gdscript-toolkit)**'s
+  `gdformat`: `pip install "gdtoolkit==4.*"`.
+
+The plugin looks for `gdscript-formatter` first, then `gdformat`, in your
+`PATH`, `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` and
+`~/.cargo/bin`. With neither installed, files save as they are. To use
+another command, set Editor Settings → `godot_nvim/formatter_command`; it
+must read the code on stdin and print the formatted code, like
+`gdformat -`. Both tools read `.editorconfig` / `gdformatrc` from the
+project folder.
+
+Turn formatting on save off with Editor Settings →
+`godot_nvim/format_on_save` (Advanced Settings must be on to see it).
+`:GodotFormat` formats the current buffer either way. To skip one buffer, set
+`vim.b.godot_nvim_format = false` in it.
+
+![Editor Settings, Godot Nvim section: Format on Save and Formatter Command](docs/screenshots/format-settings.png)
+
+Only the lines the formatter changed are replaced, so breakpoints, marks and
+the cursor stay put, and one `u` undoes your last change together with the
+formatting. If the formatter fails (for example on a syntax error) the file
+saves unformatted and a warning shows in Neovim.
+
+![A script before and after :w with format on save](docs/screenshots/format-on-save.png)
+
 ## Settings
 
 Editor Settings → `godot_nvim/`:
@@ -211,10 +244,12 @@ Editor Settings → `godot_nvim/`:
 | `nvim_args` | empty | Extra arguments for Neovim, such as `-u NONE` |
 | `connect_lsp` | on | Attach Godot's GDScript language server to `.gd` buffers |
 | `use_editor_colors` | on | Use the `godot` colorscheme built from the script editor's colors |
+| `format_on_save` | on | Format `.gd` files when saving, if a formatter is installed |
+| `formatter_command` | empty: `gdscript-formatter`, else `gdformat -` | The formatter command; reads stdin, prints the result |
 
 Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 `:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
-`:GodotFunc`, and `:colorscheme godot`.
+`:GodotFunc`, `:GodotFormat`, and `:colorscheme godot`.
 
 ## Known gaps
 

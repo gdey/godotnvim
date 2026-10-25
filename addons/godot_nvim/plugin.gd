@@ -6,6 +6,8 @@ const SETTING_PATH := "godot_nvim/nvim_path"
 const SETTING_ARGS := "godot_nvim/nvim_args"
 const SETTING_LSP := "godot_nvim/connect_lsp"
 const SETTING_THEME := "godot_nvim/use_editor_colors"
+const SETTING_FORMAT := "godot_nvim/format_on_save"
+const SETTING_FORMATTER := "godot_nvim/formatter_command"
 
 ## Where GUI-launched editors usually find nvim; macOS apps don't get the
 ## shell's PATH.
@@ -16,6 +18,10 @@ const _DebuggerBridge := preload("res://addons/godot_nvim/debugger_bridge.gd")
 const _ThemeColors := preload("res://addons/godot_nvim/theme_colors.gd")
 const _EditorProfiles := preload("res://addons/godot_nvim/editor_profiles.gd")
 const _PROFILES_MENU := "Create Neovim Editor Profiles"
+## Where GUI-launched editors may find formatters besides PATH.
+const _FORMATTER_DIRS := ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "~/.local/bin", "~/.cargo/bin"]
+## Settings of GDQuest's GDScript Formatter add-on, whose binary we reuse.
+const _GDQUEST_SETTINGS := "gdquest_gdscript_formatter/"
 ## Editor shortcuts that work while typing in Neovim.
 const _PASSTHROUGH_SHORTCUTS := ["editor/run_project", "editor/run_current_scene",
 	"editor/run_specific_scene", "editor/pause_running_project", "editor/stop_running_project"]
@@ -37,6 +43,8 @@ var _skip_buttons: Array[Button] = []
 var _unsaved := PackedStringArray()
 ## Colors last sent to Neovim.
 var _sent_theme := {}
+## Formatter settings last sent to Neovim.
+var _sent_formatter := []
 
 
 func _enter_tree() -> void:
@@ -71,7 +79,9 @@ func _enter_tree() -> void:
 			view.passthrough_shortcuts.append(sc)
 	view.attached_to_nvim.connect(_sync_breakpoints.bind(true))
 	view.attached_to_nvim.connect(_sync_theme.bind(true))
+	view.attached_to_nvim.connect(_sync_formatter.bind(true))
 	es.settings_changed.connect(_sync_theme)
+	es.settings_changed.connect(_sync_formatter)
 	# Picking a text editor theme sets its colors only when the editor theme
 	# is rebuilt, after settings_changed and without another one.
 	view.theme_changed.connect(_sync_theme)
@@ -102,6 +112,8 @@ func _exit_tree() -> void:
 	var es := EditorInterface.get_editor_settings()
 	if es.settings_changed.is_connected(_sync_theme):
 		es.settings_changed.disconnect(_sync_theme)
+	if es.settings_changed.is_connected(_sync_formatter):
+		es.settings_changed.disconnect(_sync_formatter)
 	if _debugger:
 		remove_debugger_plugin(_debugger)
 		_debugger = null
@@ -294,6 +306,70 @@ static func _find_shortcut_button(n: Node, sc: Shortcut) -> BaseButton:
 # --- Colors ------------------------------------------------------------------
 
 ## Gives Neovim the script editor's colors, when they changed or [param force].
+## Sends the formatter settings to Neovim when they change, or when Neovim
+## (re)starts.
+func _sync_formatter(force := false) -> void:
+	if view == null or not view.attached:
+		return
+	var es := EditorInterface.get_editor_settings()
+	var cmd := PackedStringArray(String(es.get_setting(SETTING_FORMATTER)).split(" ", false))
+	if cmd.is_empty():
+		cmd = _detect_formatter()
+	var on_save: bool = es.get_setting(SETTING_FORMAT) and not cmd.is_empty()
+	if force or [cmd, on_save] != _sent_formatter:
+		_sent_formatter = [cmd, on_save]
+		view.set_formatter(cmd, on_save)
+
+
+## The formatter to use when godot_nvim/formatter_command is empty: GDQuest's
+## gdscript-formatter (the one its add-on installed, or one on PATH), else
+## gdtoolkit's gdformat. Empty when neither is installed.
+func _detect_formatter() -> PackedStringArray:
+	var es := EditorInterface.get_editor_settings()
+	var gdquest := ""
+	var addon_path := _GDQUEST_SETTINGS + "formatter_path"
+	if es.has_setting(addon_path) and String(es.get_setting(addon_path)) != "":
+		gdquest = _find_executable(es.get_setting(addon_path))
+	if gdquest == "":
+		var cached := EditorInterface.get_editor_paths().get_cache_dir().path_join("gdquest/gdscript-formatter")
+		gdquest = _find_executable(cached)
+	if gdquest == "":
+		gdquest = _find_executable("gdscript-formatter")
+	if gdquest != "":
+		# It formats stdin when given no files. Follow the add-on's indent
+		# settings, as it would.
+		var cmd := PackedStringArray([gdquest])
+		if es.has_setting(_GDQUEST_SETTINGS + "use_spaces") and es.get_setting(_GDQUEST_SETTINGS + "use_spaces"):
+			cmd.append("--use-spaces")
+			if es.has_setting(_GDQUEST_SETTINGS + "indent_size"):
+				cmd.append("--indent-size=%d" % es.get_setting(_GDQUEST_SETTINGS + "indent_size"))
+		return cmd
+	var gdformat := _find_executable("gdformat")
+	if gdformat != "":
+		return PackedStringArray([gdformat, "-"])
+	return PackedStringArray()
+
+
+## Returns [param name] as an absolute path if it is an executable file, or
+## the first match in PATH and _FORMATTER_DIRS when it is a bare name.
+static func _find_executable(name: String) -> String:
+	var exe := ".exe" if OS.has_feature("windows") else ""
+	if name.is_absolute_path():
+		for p in [name, name + exe]:
+			if FileAccess.file_exists(p):
+				return p
+		return ""
+	var dirs := Array(OS.get_environment("PATH").split(";" if OS.has_feature("windows") else ":", false))
+	dirs.append_array(_FORMATTER_DIRS)
+	for d: String in dirs:
+		if d.begins_with("~"):
+			d = OS.get_environment("HOME").path_join(d.trim_prefix("~/"))
+		var p := d.path_join(name + exe)
+		if FileAccess.file_exists(p):
+			return p
+	return ""
+
+
 func _sync_theme(force := false) -> void:
 	if view == null or not view.attached:
 		return
@@ -529,3 +605,12 @@ func _ensure_settings() -> void:
 		es.set_setting(SETTING_THEME, true)
 	es.set_initial_value(SETTING_THEME, true, false)
 	es.add_property_info({"name": SETTING_THEME, "type": TYPE_BOOL})
+	if not es.has_setting(SETTING_FORMAT):
+		es.set_setting(SETTING_FORMAT, true)
+	es.set_initial_value(SETTING_FORMAT, true, false)
+	es.add_property_info({"name": SETTING_FORMAT, "type": TYPE_BOOL})
+	if not es.has_setting(SETTING_FORMATTER):
+		es.set_setting(SETTING_FORMATTER, "")
+	es.set_initial_value(SETTING_FORMATTER, "", false)
+	es.add_property_info({"name": SETTING_FORMATTER, "type": TYPE_STRING,
+		"hint": PROPERTY_HINT_PLACEHOLDER_TEXT, "hint_string": "Auto: gdscript-formatter, else gdformat -"})
