@@ -357,6 +357,8 @@ func _test_view_drop() -> void:
 	DirAccess.make_dir_recursive_absolute(cwd.path_join("scripts"))
 	FileAccess.open(cwd.path_join("scripts/stats.gd"), FileAccess.WRITE).store_string("extends Node\n\nfunc _ready():\n\tpass\n\nstatic func _get_stat(n):\n\treturn n\n")
 	FileAccess.open(cwd.path_join("scripts/other.gd"), FileAccess.WRITE).store_string("extends Node\n\nfunc _get_stat_name():\n\tpass\n")
+	# The project folder, not Neovim's working directory, is searched.
+	view.rpc.request("nvim_command", ["cd /"])
 	var names: Array = await _req(view, "nvim_call_function", ["getcompletion", ["GodotFunc _get", "cmdline"]])
 	check(names[1] == ["_get_stat", "_get_stat_name"], ":GodotFunc completes func names: %s" % [names])
 	view.rpc.request("nvim_command", ["GodotFunc _get_stat"])
@@ -367,6 +369,7 @@ func _test_view_drop() -> void:
 	qf[1].sort()
 	check(qf[1] == ["other.gd:3", "stats.gd:6"], ":GodotFunc lists partial matches: %s" % [qf])
 	view.rpc.request("nvim_command", ["cclose"])
+	view.rpc.request("nvim_command", ["cd " + cwd.replace(" ", "\\ ")])
 	view.open_file(path)
 	await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node"))
 	# Unsaved buffers are reported, and save_all writes them.
