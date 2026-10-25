@@ -217,3 +217,16 @@ NVIM=/path/to/nvim godot --headless --path . -s tests/run_tests.gd
 
 The first run in a fresh checkout needs `godot --headless --path . --editor --quit`
 first, so Godot registers the addon's `class_name`s.
+
+## Releasing
+
+Bump `version` in `addons/godot_nvim/plugin.cfg`, commit, then push a matching
+tag:
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+The Release workflow checks the tag against `plugin.cfg`, runs the tests, and
+publishes a GitHub release with `godot_nvim-<version>.zip` (the
+`addons/godot_nvim` folder).

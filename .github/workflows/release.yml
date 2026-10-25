@@ -1,0 +1,55 @@
+# Builds godot_nvim-<version>.zip and publishes a GitHub release when a
+# version tag (v0.1.0, v1.2.3, ...) is pushed. The tag must match the
+# version in addons/godot_nvim/plugin.cfg.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: 4.7.1
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches plugin.cfg
+        run: |
+          cfg=$(sed -n 's/^version="\(.*\)"$/\1/p' addons/godot_nvim/plugin.cfg)
+          tag=${GITHUB_REF_NAME#v}
+          if [ "$cfg" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match plugin.cfg version $cfg"
+            exit 1
+          fi
+          echo "VERSION=$cfg" >> "$GITHUB_ENV"
+
+      - name: Install Neovim and Godot
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q neovim
+          curl -sSLo godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          echo "GODOT=$PWD/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+
+      - name: Run tests
+        run: |
+          "$GODOT" --headless --path . --editor --quit
+          NVIM=$(command -v nvim) "$GODOT" --headless --path . -s tests/run_tests.gd
+
+      - name: Build zip
+        run: |
+          zip -qr "godot_nvim-${VERSION}.zip" addons/godot_nvim
+          unzip -l "godot_nvim-${VERSION}.zip"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "godot_nvim-${VERSION}.zip" \
+            --title "$GITHUB_REF_NAME" --generate-notes
