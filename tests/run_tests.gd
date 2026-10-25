@@ -328,6 +328,22 @@ func _test_view_drop() -> void:
 	view.rpc.request("nvim_input", [":qa!<CR>"])
 	check(await _wait(func(): return view.rpc.pid != pid and view.attached), "restarts after :qa!")
 	check(await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node")), "last file reopened after restart")
+	# :GodotFunc opens a func by name from the project's .gd files.
+	DirAccess.make_dir_recursive_absolute(cwd.path_join("scripts"))
+	FileAccess.open(cwd.path_join("scripts/stats.gd"), FileAccess.WRITE).store_string("extends Node\n\nfunc _ready():\n\tpass\n\nstatic func _get_stat(n):\n\treturn n\n")
+	FileAccess.open(cwd.path_join("scripts/other.gd"), FileAccess.WRITE).store_string("extends Node\n\nfunc _get_stat_name():\n\tpass\n")
+	var names: Array = await _req(view, "nvim_call_function", ["getcompletion", ["GodotFunc _get", "cmdline"]])
+	check(names[1] == ["_get_stat", "_get_stat_name"], ":GodotFunc completes func names: %s" % [names])
+	view.rpc.request("nvim_command", ["GodotFunc _get_stat"])
+	var at: Array = await _req(view, "nvim_exec_lua", ["return {vim.fn.expand('%:t'), vim.fn.line('.')}", []])
+	check(at[1] == ["stats.gd", 6], ":GodotFunc jumps to the func: %s" % [at])
+	view.rpc.request("nvim_command", ["GodotFunc stat"])
+	var qf: Array = await _req(view, "nvim_exec_lua", ["return vim.tbl_map(function(i) return vim.fn.fnamemodify(vim.fn.bufname(i.bufnr), ':t') .. ':' .. i.lnum end, vim.fn.getqflist())", []])
+	qf[1].sort()
+	check(qf[1] == ["other.gd:3", "stats.gd:6"], ":GodotFunc lists partial matches: %s" % [qf])
+	view.rpc.request("nvim_command", ["cclose"])
+	view.open_file(path)
+	await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node"))
 	# Unsaved buffers are reported, and save_all writes them.
 	var modified := []
 	view.modified_changed.connect(func(paths): modified.append(paths))

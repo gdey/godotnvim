@@ -165,6 +165,12 @@ vim.api.nvim_create_autocmd("LspAttach", {
 })
 ```
 
+Godot's language server can't search symbols across the project
+(`workspace/symbol`), so the plugin adds `:GodotFunc <name>`. It opens the
+function with that name in any `.gd` file under the project, with name
+completion on Tab. When several functions share the name, or none matches
+exactly but some contain it, they go to the quickfix list instead.
+
 ![Hover docs from Godot's language server](docs/screenshots/lsp-hover.png)
 
 ## Settings
@@ -180,7 +186,7 @@ Editor Settings → `godot_nvim/`:
 
 Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 `:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
-and `:colorscheme godot`.
+`:GodotFunc`, and `:colorscheme godot`.
 
 ## Known gaps
 
