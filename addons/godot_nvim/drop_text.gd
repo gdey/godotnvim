@@ -107,10 +107,12 @@ static func _owner_of(n: Node) -> Node:
 	return n.owner if n.owner else n
 
 
+## Quotes [param path] unless every segment is an identifier, as Godot does
+## ("../Player" is quoted too: GDScript's $ shorthand doesn't take "..").
 static func _quote(path: String) -> String:
 	for part in path.split("/"):
-		if part != ".." and not part.is_valid_ascii_identifier():
-			return "\"%s\"" % path
+		if not part.is_valid_ascii_identifier():
+			return "\"%s\"" % path.c_escape()
 	return path
 
 

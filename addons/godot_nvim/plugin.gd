@@ -32,6 +32,7 @@ var _skip_breakpoints := false
 var _sent_connections := []
 var _sent_connections_path := ""
 var _skip_buttons: Array[Button] = []
+var _unsaved := PackedStringArray()
 ## Colors last sent to Neovim.
 var _sent_theme := {}
 
@@ -60,6 +61,7 @@ func _enter_tree() -> void:
 		_sync_connections(true))
 	scene_changed.connect(func(_root: Node) -> void: _sync_connections(true))
 	view.breakpoint_requested.connect(_set_breakpoint)
+	view.modified_changed.connect(func(paths: PackedStringArray) -> void: _unsaved = paths)
 	view.run_requested.connect(_run)
 	for name in _PASSTHROUGH_SHORTCUTS:
 		var sc := es.get_shortcut(name)
@@ -117,6 +119,22 @@ func _get_plugin_name() -> String:
 
 func _get_plugin_icon() -> Texture2D:
 	return EditorInterface.get_editor_theme().get_icon("Script", "EditorIcons")
+
+
+## Godot asks this when the editor is closing; listing Neovim's unsaved
+## buffers makes it offer Save / Don't Save / Cancel.
+func _get_unsaved_status(for_scene: String) -> String:
+	if for_scene != "" or _unsaved.is_empty():
+		return ""
+	return "Save changes to the following file(s) in Neovim before closing?\n" + "\n".join(_unsaved)
+
+
+## Godot calls this when saving (Ctrl+S on a scene), before running the
+## project, and from the closing dialog above, like it does for its own
+## script editor.
+func _save_external_data() -> void:
+	if view:
+		view.save_all()
 
 
 func _make_visible(visible: bool) -> void:

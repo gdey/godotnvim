@@ -11,6 +11,33 @@ _G.godot_nvim = M
 
 local group = vim.api.nvim_create_augroup("godot_nvim", { clear = true })
 
+-- Buffer names with forward slashes, as Godot writes paths (matters on Windows).
+local function bufname(buf)
+  local name = vim.api.nvim_buf_get_name(buf)
+  return name == "" and name or vim.fs.normalize(name)
+end
+
+-- Unsaved buffers, so Godot can offer to save them when it closes.
+local function modified_files()
+  local out = {}
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    local name = bufname(buf)
+    if name ~= "" and vim.bo[buf].buflisted and vim.bo[buf].modified then
+      table.insert(out, name)
+    end
+  end
+  return out
+end
+
+vim.api.nvim_create_autocmd({ "BufModifiedSet", "BufWritePost", "BufDelete" }, {
+  group = group,
+  callback = function()
+    vim.schedule(function()
+      vim.rpcnotify(chan, "godot_nvim_modified", modified_files())
+    end)
+  end,
+})
+
 -- With --embed, Neovim sources the user's config only once the UI attaches,
 -- which is after this script runs. Configs that reset 'runtimepath' (lazy.nvim
 -- does by default) would drop our folder, so add it again on VimEnter.
@@ -111,7 +138,7 @@ local function apply_breakpoints(buf)
   end
   vim.api.nvim_buf_clear_namespace(buf, bp_ns, 0, -1)
   local count = vim.api.nvim_buf_line_count(buf)
-  for _, l in ipairs(M.breakpoints[vim.api.nvim_buf_get_name(buf)] or {}) do
+  for _, l in ipairs(M.breakpoints[bufname(buf)] or {}) do
     if l >= 1 and l <= count then
       vim.api.nvim_buf_set_extmark(buf, bp_ns, l - 1, 0, {
         sign_text = "●",
@@ -122,9 +149,10 @@ local function apply_breakpoints(buf)
 end
 
 function M.set_breakpoints(path, lines)
+  path = vim.fs.normalize(path)
   M.breakpoints[path] = lines
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_get_name(buf) == path then
+    if bufname(buf) == path then
       apply_breakpoints(buf)
     end
   end
@@ -156,7 +184,7 @@ function M.toggle_breakpoint(buf, line)
   buf = buf or vim.api.nvim_get_current_buf()
   line = line or vim.api.nvim_win_get_cursor(0)[1]
   local enabled = not vim.tbl_contains(M.buf_breakpoints(buf), line)
-  vim.rpcnotify(chan, "godot_nvim_set_breakpoint", vim.api.nvim_buf_get_name(buf), line, enabled)
+  vim.rpcnotify(chan, "godot_nvim_set_breakpoint", bufname(buf), line, enabled)
 end
 
 -- Expr mapping for <2-LeftMouse>: a double-click in the gutter (sign,
@@ -411,7 +439,7 @@ local function apply_method_signs(buf)
     return
   end
   vim.api.nvim_buf_clear_namespace(buf, slot_ns, 0, -1)
-  local name = vim.api.nvim_buf_get_name(buf)
+  local name = bufname(buf)
   local conns = M.connections[name] or {}
   local overrides = M.overrides[name] or {}
   local any, top = func_lines(buf)
@@ -458,7 +486,7 @@ end
 
 local function apply_to_path(path)
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_get_name(buf) == path then
+    if bufname(buf) == path then
       apply_method_signs(buf)
     end
   end
@@ -489,11 +517,11 @@ function M.show_connections()
     end
   end
   local out = {}
-  local base = top and (M.overrides[vim.api.nvim_buf_get_name(buf)] or {})[name]
+  local base = top and (M.overrides[bufname(buf)] or {})[name]
   if base then
     table.insert(out, string.format("Overrides %s.%s()", base, name))
   end
-  for _, c in ipairs(M.connections[vim.api.nvim_buf_get_name(buf)] or {}) do
+  for _, c in ipairs(M.connections[bufname(buf)] or {}) do
     if c.method == name then
       table.insert(out, string.format("%s.%s -> %s.%s()", c.source, c.signal, c.target, c.method))
     end
@@ -511,7 +539,7 @@ vim.api.nvim_create_user_command("GodotConnections", M.show_connections,
 vim.api.nvim_create_autocmd({ "TextChanged", "InsertLeave" }, {
   group = group,
   callback = function(ev)
-    local name = vim.api.nvim_buf_get_name(ev.buf)
+    local name = bufname(ev.buf)
     if M.connections[name] or M.overrides[name] then
       apply_method_signs(ev.buf)
     end
@@ -550,19 +578,19 @@ vim.api.nvim_create_autocmd("FileType", {
 vim.api.nvim_create_autocmd("BufWritePost", {
   group = group,
   callback = function(ev)
-    vim.rpcnotify(chan, "godot_nvim_saved", vim.api.nvim_buf_get_name(ev.buf), M.buf_breakpoints(ev.buf))
+    vim.rpcnotify(chan, "godot_nvim_saved", bufname(ev.buf), M.buf_breakpoints(ev.buf))
   end,
 })
 
 vim.api.nvim_create_autocmd("BufEnter", {
   group = group,
   callback = function(ev)
-    vim.rpcnotify(chan, "godot_nvim_buf_enter", vim.api.nvim_buf_get_name(ev.buf))
+    vim.rpcnotify(chan, "godot_nvim_buf_enter", bufname(ev.buf))
   end,
 })
 -- A file Godot opened before this script loaded entered without us.
-if vim.api.nvim_buf_get_name(0) ~= "" then
-  vim.rpcnotify(chan, "godot_nvim_buf_enter", vim.api.nvim_buf_get_name(0))
+if bufname(0) ~= "" then
+  vim.rpcnotify(chan, "godot_nvim_buf_enter", bufname(0))
 end
 
 -- Attaches Godot's language server to [buf], unless the user's own config

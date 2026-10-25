@@ -39,13 +39,34 @@ func is_running() -> bool:
 	return pid > 0 and OS.is_process_running(pid)
 
 
-func stop() -> void:
+## Quits Neovim, giving it [param grace_ms] to exit cleanly (and remove its
+## swap files) before it is killed.
+func stop(grace_ms := 1000) -> void:
 	if is_running():
 		notify("nvim_command", ["qa!"])
-		OS.kill(pid)
+		var deadline := Time.get_ticks_msec() + grace_ms
+		while OS.is_process_running(pid) and Time.get_ticks_msec() < deadline:
+			_io.get_buffer(1 << 16)  # keep the pipe drained so nvim isn't blocked writing
+			OS.delay_msec(10)
+		if OS.is_process_running(pid):
+			OS.kill(pid)
 	pid = -1
 	_io = null
 	_err = null
+
+
+## Calls [param method] and waits up to [param timeout_ms] for the result,
+## dispatching anything else that arrives meanwhile. Returns [error, result];
+## error is "timeout" if Neovim didn't answer in time.
+func request_sync(method: String, params: Array = [], timeout_ms := 2000) -> Array:
+	var out := []
+	request(method, params, func(err: Variant, res: Variant) -> void: out.append_array([err, res]))
+	var deadline := Time.get_ticks_msec() + timeout_ms
+	while out.is_empty() and is_running() and Time.get_ticks_msec() < deadline:
+		poll()
+		if out.is_empty():
+			OS.delay_msec(5)
+	return out if out.size() == 2 else ["timeout", null]
 
 
 ## Calls [param method]; [param callback] gets (error, result) when the

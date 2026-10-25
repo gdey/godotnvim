@@ -141,7 +141,7 @@ func _test_drop_text() -> void:
 	check(sn == holder, "finds script node")
 	var data := {"type": "nodes", "nodes": [player.get_path()]}
 	check(DropText.build(data, main, main, false, true) == {"kind": "text", "text": "$Player"}, "plain drop")
-	check(DropText.build(data, main, holder, false, true)["text"] == "$../Player", "relative to script node")
+	check(DropText.build(data, main, holder, false, true)["text"] == "$\"../Player\"", "relative to script node (quoted, like Godot)")
 	data = {"type": "nodes", "nodes": [odd.get_path(), hud.get_path()]}
 	check(DropText.build(data, main, main, false, true)["text"] == "$\"Player/Odd Name\", %HUD", "quoted + unique")
 	var r := DropText.build(data, main, main, true, true)
@@ -192,6 +192,9 @@ func _test_view_drop() -> void:
 	var view := NvimView.new()
 	view.nvim_path = _nvim_path()
 	view.nvim_args = PackedStringArray(["--clean", "-u", ProjectSettings.globalize_path("res://tests/fixtures/init.lua"), "-n"])
+	var cwd := OS.get_cache_dir().path_join("godot nvim cwd")
+	DirAccess.make_dir_recursive_absolute(cwd)
+	view.working_dir = cwd
 	view.size = Vector2(800, 400)
 	root.add_child(view)
 	# Like the plugin, send colors on attach: before the user's config runs
@@ -199,6 +202,8 @@ func _test_view_drop() -> void:
 	view.attached_to_nvim.connect(func(): view.set_colorscheme({"background_color": "#202830", "dark": true}))
 	check(view.start() == OK, "view starts nvim")
 	check(await _wait(func(): return view.attached and view.grid.height > 0), "view attached")
+	var got_cwd: Array = view.rpc.request_sync("nvim_call_function", ["getcwd", []])
+	check(got_cwd[1] == cwd, "working dir with a space: %s" % [got_cwd])
 	var first: Array = await _req(view, "nvim_exec_lua", ["return {vim.g.colors_name, vim.api.nvim_get_hl(0, {name = 'Normal'}).bg}", []])
 	check(first[1] == ["godot", 0x202830], "colors sent on attach win over the user's config: %s" % [first])
 	var path := OS.get_cache_dir().path_join("godot_nvim_test.gd")
@@ -251,7 +256,8 @@ func _test_view_drop() -> void:
 	check(hl[1] == ["godot", 0x1a1a1a, 0xff7085, 0xffb373, 0xff7869, true, "dark"], "godot colorscheme applied: %s" % [hl])
 	check(await _wait(func(): return view.grid.default_bg == Color("#1a1a1a")), "view background follows the theme: %s" % [view.grid.default_bg])
 	# Editor shortcuts pass through; other keys still reach Neovim.
-	view.rpc.request("nvim_command", ["nnoremap <F5> <Cmd>let g:f5 = get(g:, 'f5', 0) + 1<CR>"])
+	# Wait for the mapping: nvim_input is handled ahead of queued requests.
+	await _req(view, "nvim_command", ["nnoremap <F5> <Cmd>let g:f5 = get(g:, 'f5', 0) + 1<CR>"])
 	var f5 := Shortcut.new()
 	var f5_event := InputEventKey.new()
 	f5_event.keycode = KEY_F5
@@ -263,7 +269,15 @@ func _test_view_drop() -> void:
 	view._gui_input(press)
 	view.passthrough_shortcuts = []
 	view._gui_input(press)
-	var f5_count: Array = await _req(view, "nvim_eval", ["get(g:, 'f5', 0)"])
+	# Wait for the mapping to run, then give a stray second F5 time to arrive.
+	var f5_count: Array = [null, 0]
+	for i in 30:
+		f5_count = await _req(view, "nvim_eval", ["get(g:, 'f5', 0)"])
+		if f5_count[1] >= 1:
+			break
+		await create_timer(0.1).timeout
+	await create_timer(0.3).timeout
+	f5_count = await _req(view, "nvim_eval", ["get(g:, 'f5', 0)"])
 	check(f5_count[1] == 1, "passthrough shortcut skips Neovim: %s" % [f5_count])
 	# :Godot run commands.
 	var runs := []
@@ -314,5 +328,19 @@ func _test_view_drop() -> void:
 	view.rpc.request("nvim_input", [":qa!<CR>"])
 	check(await _wait(func(): return view.rpc.pid != pid and view.attached), "restarts after :qa!")
 	check(await _wait(func(): return view.grid.row_string(0).strip_edges(true, false).begins_with("extends Node")), "last file reopened after restart")
+	# Unsaved buffers are reported, and save_all writes them.
+	var modified := []
+	view.modified_changed.connect(func(paths): modified.append(paths))
+	view.rpc.request("nvim_buf_set_lines", [0, 0, 0, false, ["# edited"]])
+	check(await _wait(func(): return modified.size() > 0 and modified[-1].size() == 1), "modified buffer reported")
+	view.save_all()
+	check(FileAccess.get_file_as_string(path).begins_with("# edited"), "save_all wrote the buffer")
+	check(await _wait(func(): return modified.size() > 0 and modified[-1].is_empty()), "no unsaved buffers after save")
+	# A clean stop removes Neovim's swap file.
+	view.rpc.request("nvim_buf_set_lines", [0, 0, 0, false, ["# unsaved"]])
+	var swap: Array = view.rpc.request_sync("nvim_eval", ["swapname('%')"])
+	var had_swap: bool = swap[0] == null and swap[1] != "" and FileAccess.file_exists(swap[1])
 	view.stop()
+	if had_swap:
+		check(not FileAccess.file_exists(swap[1]), "swap file removed on stop")
 	view.queue_free()
