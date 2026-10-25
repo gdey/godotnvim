@@ -51,5 +51,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Notes: this version's section of CHANGELOG.md.
+          awk -v v="$VERSION" '/^## \[/ { on = index($0, "[" v "]") > 0; next } on' CHANGELOG.md > notes.md
           gh release create "$GITHUB_REF_NAME" "godot_nvim-${VERSION}.zip" \
-            --title "$GITHUB_REF_NAME" --generate-notes
+            --title "$GITHUB_REF_NAME" --notes-file notes.md
