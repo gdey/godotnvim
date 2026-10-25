@@ -155,7 +155,21 @@ func _test_drop_text() -> void:
 	check(r["text"] == "\"res://art/my_icon.png\"", "file drop")
 	r = DropText.build({"type": "files", "files": ["res://art/my_icon.png"]}, main, main, true, true)
 	check(r["text"] == "const MyIcon = preload(\"res://art/my_icon.png\")\n", "file preload: " + r["text"])
-	check(DropText.build({"type": "obj_property"}, main, main, false, true).is_empty(), "ignores other drags")
+	var prop := func(obj: Object, name: String, from: Node, mod: bool) -> String:
+		return DropText.build({"type": "obj_property", "object": obj, "property": name}, main, from, mod, true).get("text", "")
+	check(prop.call(odd, "modulate", main, false) == "$\"Player/Odd Name\".modulate", "property drop")
+	check(prop.call(player, "velocity", holder, false) == "$\"../Player\".velocity", "property relative to script node")
+	check(prop.call(hud, "theme_override_colors/font_color", main, false) == "%HUD.get(\"theme_override_colors/font_color\")", "slashed property uses get()")
+	check(prop.call(holder, "process_mode", holder, false) == "process_mode", "own property is bare")
+	check(prop.call(odd, "modulate", main, true) == "\"Player/Odd Name:modulate\"", "property NodePath with modifier")
+	check(prop.call(player, "position", holder, true) == "\"../Player:position\"", "relative NodePath with modifier")
+	check(prop.call(holder, "process_mode", holder, true) == "\".:process_mode\"", "own NodePath with modifier")
+	check(prop.call(CanvasItemMaterial.new(), "blend_mode", main, false) == "\"blend_mode\"", "non-node property drops its name")
+	var stray := Node.new()
+	check(prop.call(stray, "name", main, false) == "\"name\"", "node outside the scene drops its name")
+	stray.free()
+	check(DropText.build({"type": "obj_property"}, main, main, false, true).is_empty(), "ignores property drag without a property")
+	check(DropText.build({"type": "resource"}, main, main, false, true).is_empty(), "ignores other drags")
 	main.queue_free()
 
 

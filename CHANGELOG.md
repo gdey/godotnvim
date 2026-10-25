@@ -8,6 +8,9 @@ All notable changes to this plugin are listed here. Versions follow
 
 ### Added
 
+- Dragging a property from the Inspector into Neovim inserts it with its
+  node path, `$Path/To/Node.property`, or with Ctrl/Cmd held, the NodePath
+  string `"Path/To/Node:property"`.
 - Open files, cursor positions, splits and tabs are saved when the editor
   closes (or Neovim quits) and restored when the project opens again. The
   session lives in `.godot/godot_nvim/session.vim`. Editor Settings →
