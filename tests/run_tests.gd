@@ -16,6 +16,7 @@ func _init() -> void:
 	_test_find_executable()
 	await _test_embed()
 	await _test_view_drop()
+	await _test_session()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
 	quit(1 if _failures else 0)
 
@@ -438,7 +439,7 @@ func _test_format(view: NvimView, cwd: String) -> void:
 	await _req(view, "nvim_eval", ["1"])
 	check(FileAccess.get_file_as_string(fmt_path).contains("\n    print(0)\n"), "no formatter: saved as is")
 	# The real thing, when installed: GDQuest's formatter indents with tabs.
-	var gdquest: String = load("res://addons/godot_nvim/plugin.gd")._find_executable("gdscript-formatter")
+	var gdquest: String = load("res://addons/godot_nvim/plugin.gd")._find_executable.call("gdscript-formatter")
 	if gdquest != "":
 		view.set_formatter(PackedStringArray([gdquest]), true)
 		view.rpc.request("nvim_buf_set_lines", [0, 0, -1, false, ["extends Node", "func a( ):", "    pass"]])
@@ -447,3 +448,94 @@ func _test_format(view: NvimView, cwd: String) -> void:
 		check(FileAccess.get_file_as_string(fmt_path) == "extends Node\n\n\nfunc a():\n\tpass\n",
 			"gdscript-formatter on save: %s" % FileAccess.get_file_as_string(fmt_path).c_escape())
 	view.set_formatter(PackedStringArray(), false)
+
+
+func _session_view(session: String, cwd: String) -> NvimView:
+	var view := NvimView.new()
+	view.nvim_path = _nvim_path()
+	view.nvim_args = PackedStringArray(["--clean", "-u", ProjectSettings.globalize_path("res://tests/fixtures/init.lua"), "-n"])
+	view.working_dir = cwd
+	view.session_file = session
+	# A user option the session script would reset.
+	view.nvim_args.append_array(["--cmd", "set winwidth=30"])
+	view.auto_restart = false
+	view.size = Vector2(800, 400)
+	root.add_child(view)
+	return view
+
+
+## Open files, cursors, splits and tabs come back after a restart.
+func _test_session() -> void:
+	print("session")
+	var cwd := OS.get_cache_dir().path_join("godot nvim session")
+	DirAccess.make_dir_recursive_absolute(cwd)
+	var session := cwd.path_join(".godot/godot_nvim/session.vim")
+	DirAccess.remove_absolute(session)
+	var a := cwd.path_join("a.gd")
+	var b := cwd.path_join("b.gd")
+	var c := cwd.path_join("c.gd")
+	for p in [a, b, c]:
+		FileAccess.open(p, FileAccess.WRITE).store_string("extends Node\n\n# %s\n\nfunc _ready():\n\tpass\n" % p.get_file())
+	var layout_lua := "local r = {} for _, t in ipairs(vim.api.nvim_list_tabpages()) do local ws = {} for _, w in ipairs(vim.api.nvim_tabpage_list_wins(t)) do table.insert(ws, vim.fn.fnamemodify(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(w)), ':t') .. ':' .. vim.api.nvim_win_get_cursor(w)[1]) end table.insert(r, ws) end return {r, vim.fn.expand('%:t'), vim.fn.winlayout(1)[1]}"
+
+	var view := _session_view(session, cwd)
+	view.start()
+	check(await _wait(func(): return view.entered and view.grid.height > 0), "session view started")
+	# Nothing open: nothing saved.
+	view.stop()
+	check(not FileAccess.file_exists(session), "no session without open files")
+	view.start()
+	await _wait(func(): return view.entered)
+	# Tab 1: a and b side by side; tab 2: c. Cursor ends in b.
+	view.open_file(a, 3)
+	view.rpc.request("nvim_command", ["vsplit " + b.replace(" ", "\\ ")])
+	view.rpc.request("nvim_win_set_cursor", [0, [5, 0]])
+	view.rpc.request("nvim_command", ["tabedit " + c.replace(" ", "\\ ")])
+	view.rpc.request("nvim_win_set_cursor", [0, [6, 0]])
+	view.rpc.request("nvim_command", ["tabprevious"])
+	var before: Array = await _req(view, "nvim_exec_lua", [layout_lua, []])
+	check(before[1] == [[["b.gd:5", "a.gd:3"], ["c.gd:6"]], "b.gd", "row"], "layout to save: %s" % [before])
+	view.stop()
+	check(FileAccess.file_exists(session), "session saved on stop")
+	view.start()
+	await _wait(func(): return view.entered)
+	var after: Array = []
+	await _wait(func():
+		after.assign(view.rpc.request_sync("nvim_exec_lua", [layout_lua, []]))
+		return after[1] == before[1])
+	check(after[1] == before[1], "files, cursors, splits and tabs restored: %s" % [after])
+	var names: Array = await _req(view, "nvim_exec_lua", ["return vim.fn.bufname()", []])
+	check(names[1] == "b.gd", "names relative to the working directory: %s" % [names])
+	# Row 0 is the tabline.
+	check(await _wait(func(): return view.grid.row_string(1).contains("extends Node")), "restored files shown")
+	var ft: Array = await _req(view, "nvim_eval", ["&filetype"])
+	check(ft[1] == "gdscript", "restored buffers get their filetype: %s" % [ft])
+	var ww: Array = await _req(view, "nvim_eval", ["&winwidth"])
+	check(ww[1] == 30, "user's options kept: winwidth=%s" % [ww[1]])
+	view.stop()
+
+	# A file Godot opens at startup keeps the focus; deleted files stay closed.
+	DirAccess.remove_absolute(c)
+	view.start()
+	view.open_file(a, 6)
+	await _wait(func():
+		after.assign(view.rpc.request_sync("nvim_exec_lua", [layout_lua, []]))
+		return after[1] is Array and after[1][1] == "a.gd")
+	check(after[1] is Array and after[1][0] == [["b.gd:5", "a.gd:6"]] and after[1][1] == "a.gd", "Godot's file focused at its line, deleted file's tab gone: %s" % [after])
+	var listed: Array = await _req(view, "nvim_exec_lua", ["return vim.tbl_map(function(i) return vim.fn.fnamemodify(i.name, ':t') end, vim.fn.getbufinfo({buflisted = 1}))", []])
+	check(not listed[1].has("c.gd"), "deleted file not reopened: %s" % [listed])
+
+	# Turned off: not saved, and the old session isn't restored.
+	view.set_session_file("")
+	view.rpc.request("nvim_command", ["only"])
+	view.stop()
+	var kept := FileAccess.get_file_as_string(session)
+	view.session_file = ""
+	view.start()
+	await _wait(func(): return view.entered)
+	await create_timer(0.3).timeout
+	var off: Array = await _req(view, "nvim_exec_lua", [layout_lua, []])
+	check(off[1][1] == "", "no restore when off: %s" % [off])
+	view.stop()
+	check(FileAccess.get_file_as_string(session) == kept, "no save when off")
+	view.queue_free()

@@ -8,6 +8,9 @@ const SETTING_LSP := "godot_nvim/connect_lsp"
 const SETTING_THEME := "godot_nvim/use_editor_colors"
 const SETTING_FORMAT := "godot_nvim/format_on_save"
 const SETTING_FORMATTER := "godot_nvim/formatter_command"
+const SETTING_SESSION := "godot_nvim/restore_session"
+## Per project, and kept out of version control with the rest of .godot/.
+const _SESSION_FILE := "res://.godot/godot_nvim/session.vim"
 
 ## Where GUI-launched editors usually find nvim; macOS apps don't get the
 ## shell's PATH.
@@ -55,6 +58,7 @@ func _enter_tree() -> void:
 	view.nvim_path = es.get_setting(SETTING_PATH)
 	view.nvim_args = PackedStringArray(String(es.get_setting(SETTING_ARGS)).split(" ", false))
 	view.working_dir = ProjectSettings.globalize_path("res://")
+	view.session_file = _session_file()
 	if es.get_setting(SETTING_LSP):
 		view.lsp_host = es.get_setting("network/language_server/remote_host")
 		view.lsp_port = es.get_setting("network/language_server/remote_port")
@@ -74,14 +78,20 @@ func _enter_tree() -> void:
 	view.modified_changed.connect(func(paths: PackedStringArray) -> void: _unsaved = paths)
 	view.run_requested.connect(_run)
 	for name in _PASSTHROUGH_SHORTCUTS:
-		var sc := es.get_shortcut(name)
+		var sc := _editor_shortcut(name)
 		if sc:
 			view.passthrough_shortcuts.append(sc)
+	if view.passthrough_shortcuts.is_empty():
+		# Godot 4.5: take them from the run bar's buttons.
+		for b in _run_bar_buttons():
+			if b.shortcut:
+				view.passthrough_shortcuts.append(b.shortcut)
 	view.attached_to_nvim.connect(_sync_breakpoints.bind(true))
 	view.attached_to_nvim.connect(_sync_theme.bind(true))
 	view.attached_to_nvim.connect(_sync_formatter.bind(true))
 	es.settings_changed.connect(_sync_theme)
 	es.settings_changed.connect(_sync_formatter)
+	es.settings_changed.connect(_sync_session)
 	# Picking a text editor theme sets its colors only when the editor theme
 	# is rebuilt, after settings_changed and without another one.
 	view.theme_changed.connect(_sync_theme)
@@ -114,6 +124,8 @@ func _exit_tree() -> void:
 		es.settings_changed.disconnect(_sync_theme)
 	if es.settings_changed.is_connected(_sync_formatter):
 		es.settings_changed.disconnect(_sync_formatter)
+	if es.settings_changed.is_connected(_sync_session):
+		es.settings_changed.disconnect(_sync_session)
 	if _debugger:
 		remove_debugger_plugin(_debugger)
 		_debugger = null
@@ -286,11 +298,35 @@ func _run(action: String, arg: String) -> void:
 		"pause":
 			# No API for this; press the run bar's pause button, as its
 			# shortcut does.
-			var b := _find_shortcut_button(EditorInterface.get_base_control(),
-				EditorInterface.get_editor_settings().get_shortcut("editor/pause_running_project"))
+			var sc := _editor_shortcut("editor/pause_running_project")
+			var b: BaseButton = null
+			if sc:
+				b = _find_shortcut_button(EditorInterface.get_base_control(), sc)
+			else:
+				var icon := EditorInterface.get_editor_theme().get_icon("Pause", "EditorIcons")
+				for rb in _run_bar_buttons():
+					if rb is Button and rb.icon == icon:
+						b = rb
 			if b and not b.disabled:
 				b.button_pressed = not b.button_pressed
 				b.pressed.emit()
+
+
+## The editor shortcut [param name], or null before Godot 4.6, which lacks
+## EditorSettings.get_shortcut().
+static func _editor_shortcut(name: String) -> Shortcut:
+	var es := EditorInterface.get_editor_settings()
+	if es.has_method("get_shortcut"):
+		return es.call("get_shortcut", name)
+	return null
+
+
+static func _run_bar_buttons() -> Array[BaseButton]:
+	var out: Array[BaseButton] = []
+	for bar in EditorInterface.get_base_control().find_children("*", "EditorRunBar", true, false):
+		for b in bar.find_children("*", "BaseButton", true, false):
+			out.append(b)
+	return out
 
 
 static func _find_shortcut_button(n: Node, sc: Shortcut) -> BaseButton:
@@ -301,6 +337,20 @@ static func _find_shortcut_button(n: Node, sc: Shortcut) -> BaseButton:
 		if r:
 			return r
 	return null
+
+
+# --- Session -----------------------------------------------------------------
+
+## The session file, or "" when godot_nvim/restore_session is off.
+func _session_file() -> String:
+	if not EditorInterface.get_editor_settings().get_setting(SETTING_SESSION):
+		return ""
+	return ProjectSettings.globalize_path(_SESSION_FILE)
+
+
+func _sync_session() -> void:
+	if view and _session_file() != view.session_file:
+		view.set_session_file(_session_file())
 
 
 # --- Colors ------------------------------------------------------------------
@@ -614,3 +664,7 @@ func _ensure_settings() -> void:
 	es.set_initial_value(SETTING_FORMATTER, "", false)
 	es.add_property_info({"name": SETTING_FORMATTER, "type": TYPE_STRING,
 		"hint": PROPERTY_HINT_PLACEHOLDER_TEXT, "hint_string": "Auto: gdscript-formatter, else gdformat -"})
+	if not es.has_setting(SETTING_SESSION):
+		es.set_setting(SETTING_SESSION, true)
+	es.set_initial_value(SETTING_SESSION, true, false)
+	es.add_property_info({"name": SETTING_SESSION, "type": TYPE_BOOL})

@@ -4,6 +4,8 @@
 --   lsp:  { host = ..., port = ... } to attach Godot's GDScript language
 --         server to gdscript buffers, or nil to leave LSP to the user's config
 --   runtime: folder with this plugin's runtime files (colors/godot.lua)
+--   session: file to save open files and layout to when Neovim exits, and
+--         to restore them from when it starts; nil for neither
 local chan, opts = ...
 opts = opts or {}
 local M = {}
@@ -110,6 +112,96 @@ vim.api.nvim_create_autocmd("QuitPre", {
         vim.api.nvim_buf_delete(buf, {})
       end
     end)
+  end,
+})
+
+-- Session --------------------------------------------------------------------
+-- Open files, cursors, splits and tabs are saved with :mksession when Neovim
+-- exits (Godot closing, or :qa) and restored once the user's config has run.
+-- Options and mappings aren't saved: the config owns those. Paths are stored
+-- absolute, and windows on scratch buffers (file trees, the placeholder) are
+-- left out.
+
+M.session = opts.session
+local session_options = "buffers,folds,help,tabpages,winsize"
+local restored_options = { "showtabline", "hlsearch", "winheight", "winwidth", "winminheight", "winminwidth" }
+
+-- Writes the session, or removes it when no file is open.
+function M.save_session()
+  local file = M.session
+  if not file then
+    return
+  end
+  local any = false
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.bo[buf].buflisted and vim.bo[buf].buftype == "" and bufname(buf) ~= "" then
+      any = true
+      break
+    end
+  end
+  if not any then
+    os.remove(file)
+    return
+  end
+  vim.fn.mkdir(vim.fn.fnamemodify(file, ":h"), "p")
+  local saved = vim.o.sessionoptions
+  vim.o.sessionoptions = session_options
+  local ok, err = pcall(vim.cmd, "mksession! " .. vim.fn.fnameescape(file))
+  vim.o.sessionoptions = saved
+  if not ok then
+    vim.notify("godot_nvim: could not save the session: " .. err, vim.log.levels.WARN)
+  end
+end
+
+-- Restores the session.
+function M.restore_session()
+  local file = M.session
+  if not file or vim.fn.filereadable(file) == 0 then
+    return
+  end
+  -- The session script resets these to Vim's defaults; keep the user's.
+  local keep = {}
+  for _, o in ipairs(restored_options) do
+    keep[o] = vim.o[o]
+  end
+  local ok, err = pcall(vim.cmd, "silent source " .. vim.fn.fnameescape(file))
+  for o, v in pairs(keep) do
+    vim.o[o] = v
+  end
+  if not ok then
+    vim.notify("godot_nvim: could not restore the session: " .. err, vim.log.levels.WARN)
+  end
+  -- Show the absolute paths relative to the working directory again.
+  vim.cmd("noautocmd silent cd .")
+  -- Files deleted since would come back as empty new files.
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    local name = bufname(buf)
+    if name ~= "" and vim.bo[buf].buftype == "" and not vim.bo[buf].modified
+        and vim.fn.filereadable(name) == 0 then
+      pcall(vim.api.nvim_buf_delete, buf, {})
+    end
+  end
+end
+
+vim.api.nvim_create_autocmd("VimLeavePre", {
+  group = group,
+  callback = function()
+    if vim.v.dying == 0 then
+      M.save_session()
+    end
+  end,
+})
+-- Godot holds back the files it opens until Neovim has started (startup
+-- would move their cursors) and the session is restored, so that its file
+-- lands on top of the session. Nested, so the restored buffers get their
+-- FileType, signs and LSP.
+vim.api.nvim_create_autocmd("VimEnter", {
+  group = group,
+  once = true,
+  nested = true,
+  callback = function()
+    M.restore_session()
+    vim.rpcnotify(chan, "godot_nvim_entered")
   end,
 })
 
