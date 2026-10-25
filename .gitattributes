@@ -11,3 +11,4 @@
 /tests export-ignore
 /.github export-ignore
 /CHANGELOG.md export-ignore
+/colorscheme export-ignore

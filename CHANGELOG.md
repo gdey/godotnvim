@@ -8,6 +8,10 @@ All notable changes to this plugin are listed here. Versions follow
 
 ### Added
 
+- `colorscheme/`: vim2godot, a Go tool that converts a Vim or Neovim
+  colorscheme (any on vimcolorschemes.com) into a Godot editor theme, a `.tet`
+  for the script editor plus an EditorScript for the interface colors. It is
+  not part of the addon download. cendre is included as an example.
 - Dragging a property from the Inspector into Neovim inserts it with its
   node path, `$Path/To/Node.property`, or with Ctrl/Cmd held, the NodePath
   string `"Path/To/Node:property"`.
