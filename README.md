@@ -5,7 +5,7 @@ an embedded Neovim, drawn inside the editor with Neovim's UI protocol
 (`ext_linegrid`). It keeps the parts of Godot's script editor that matter:
 
 - dragging nodes or files from the editor's docks inserts the same text Godot
-  does;
+  does, and dragging an Inspector property inserts its node path;
 - the GDScript language server gives hover docs, definitions and completion;
 - debugger breakpoints show in the gutter, in sync with Godot's debugger;
 - signs mark methods that signals connect to and methods that override a base
@@ -57,6 +57,15 @@ Neovim starts in the project folder and loads your usual config.
   Ctrl/Cmd held, `const Name = preload("res://path")`.
 
   ![Ctrl-dropping two nodes inserts @onready vars](docs/screenshots/drag-and-drop.png)
+
+- Drag a property from the Inspector to insert it with its node path:
+  `$Path/To/Node.property` (just `property` for the script's own node, and
+  `.get("group/property")` for properties with a slash). Hold Ctrl (Cmd on
+  macOS) to insert the NodePath string `"Path/To/Node:property"` instead,
+  as animation tracks take. Properties of a resource rather than a node
+  insert the quoted name, as Godot does.
+
+  ![Dropping the Score label's Text property inserts %Score.text, and with Ctrl, "../HUD/Score:text"](docs/screenshots/inspector-drop.gif)
 
 - `:w` saves, and Godot reloads the script, shader or JSON.
 - Like Godot's own script editor, unsaved Neovim buffers are written when you
@@ -294,7 +303,7 @@ Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 | `nvim_grid.gd` | `ext_linegrid` screen state (cells, highlights, cursor, mode) |
 | `nvim_view.gd` | Control that draws the grid and sends keyboard, mouse and drops to Neovim |
 | `nvim_keys.gd` | Turns Godot key events into Neovim key notation |
-| `drop_text.gd` | Builds the text for dropped nodes and files, matching Godot's script editor |
+| `drop_text.gd` | Builds the text for dropped nodes, files and Inspector properties |
 | `godot_nvim.lua` | Neovim side: save and buffer notifications, `:q` handling, sessions, drop insertion, breakpoint, signal and override signs, LSP setup, run commands |
 | `theme_colors.gd` | Reads the script editor's colors for Neovim's `godot` colorscheme |
 | `nvim/colors/godot.lua` | The `godot` colorscheme (needs the colors from the editor) |

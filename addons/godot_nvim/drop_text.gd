@@ -1,6 +1,8 @@
 ## Builds the text Godot's script editor inserts when nodes or files are
 ## dropped on a script: "$Path" (or "%Unique"), or with the drop modifier
 ## (Ctrl / Cmd) held, "@onready var name: Type = $Path" lines.
+## Inspector properties drop as "$Path.property", or with the modifier,
+## a "Path:property" NodePath string.
 class_name DropText
 extends RefCounted
 
@@ -29,6 +31,17 @@ static func build(data: Variant, scene_root: Node, script_node: Node, modifier: 
 			if files.is_empty():
 				return {}
 			return files_text(files, modifier)
+		"obj_property":
+			var prop := String(data.get("property", ""))
+			if prop == "":
+				return {}
+			var obj: Object = data.get("object")
+			var from := script_node if script_node else scene_root
+			if obj is Node and from != null and (obj == scene_root or scene_root.is_ancestor_of(obj)):
+				return {"kind": "text", "text": property_text(obj, prop, from, modifier)}
+			# Not a node in the edited scene (a sub-resource, a setting):
+			# insert the name, as Godot does.
+			return {"kind": "text", "text": "\"%s\"" % prop.c_escape()}
 	return {}
 
 
@@ -57,6 +70,18 @@ static func files_text(files: Array, modifier: bool) -> Dictionary:
 	for f in files:
 		refs.append("\"%s\"" % f)
 	return {"kind": "text", "text": ", ".join(refs)}
+
+
+## "$Path.prop" ("prop" on [param from] itself), or with [param modifier],
+## the NodePath string "Path:prop". Properties that aren't identifiers
+## ("theme_override_colors/font_color") use get("prop").
+static func property_text(n: Node, prop: String, from: Node, modifier: bool) -> String:
+	if modifier:
+		return "\"%s:%s\"" % [String(from.get_path_to(n)).c_escape(), prop.c_escape()]
+	var access := prop if prop.is_valid_ascii_identifier() else "get(\"%s\")" % prop.c_escape()
+	if n == from:
+		return access
+	return node_ref(n, from) + "." + access
 
 
 ## "$Path/To", "$\"Odd Name\"" or "%Unique".
