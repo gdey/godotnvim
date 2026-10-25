@@ -140,6 +140,13 @@ func set_colorscheme(colors: Dictionary) -> void:
 		rpc.request("nvim_exec_lua", ["godot_nvim.set_theme(...)", [colors]])
 
 
+## Sets the GDScript formatter: [param cmd] reads code on stdin and writes
+## it formatted to stdout. [param on_save] formats .gd files before writing.
+func set_formatter(cmd: PackedStringArray, on_save: bool) -> void:
+	if attached:
+		rpc.request("nvim_exec_lua", ["godot_nvim.set_formatter(...)", [cmd, on_save]])
+
+
 ## Shows [param lines] (1-based) as breakpoint signs in [param path]'s buffer.
 
 func set_breakpoints(path: String, lines: Array) -> void:

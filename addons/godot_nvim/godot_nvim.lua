@@ -231,6 +231,120 @@ vim.api.nvim_create_user_command("GodotPause", function() run("pause") end,
 vim.api.nvim_create_user_command("GodotStop", function() run("stop") end,
   { desc = "Stop the running Godot project" })
 
+-- Formatting ----------------------------------------------------------------
+-- Godot has no GDScript formatter, so an external one (GDQuest's
+-- gdscript-formatter or gdformat, whichever Godot finds) formats .gd buffers
+-- before they are written. Godot pushes the command with set_formatter: an
+-- argv list that reads the code on stdin and writes the formatted code to
+-- stdout, or nil when none is installed. b:godot_nvim_format = v:false
+-- skips a buffer.
+
+M.formatter = nil
+M.format_on_save = false
+-- Commands already reported missing, so each save doesn't warn again.
+local format_warned = {}
+
+local text_diff = (vim.text and vim.text.diff) or vim.diff
+
+function M.set_formatter(cmd, on_save)
+  M.formatter = (cmd and #cmd > 0) and cmd or nil
+  M.format_on_save = on_save and M.formatter ~= nil
+end
+
+-- Reports a formatting problem after the write. On save it is cut to one
+-- line, so a hit-enter prompt can't hold up the write or Godot's requests.
+local function format_warn(msg, full)
+  if not full then
+    msg = msg:gsub("\n.*", "")
+    if #msg > vim.v.echospace then
+      msg = msg:sub(1, math.max(vim.v.echospace - 3, 1)) .. "..."
+    end
+  end
+  vim.schedule(function()
+    vim.notify(msg, vim.log.levels.WARN)
+  end)
+end
+
+-- Runs [cmd] on [buf]'s text and applies the changes as diff hunks, so
+-- breakpoints, signs and the cursor stay on lines the formatter left alone.
+-- [full] shows whole error messages (for :GodotFormat). Returns true when
+-- the buffer is formatted (changed or not).
+function M.format(buf, cmd, full)
+  buf = (buf and buf ~= 0) and buf or vim.api.nvim_get_current_buf()
+  cmd = cmd or M.formatter
+  if not cmd then
+    format_warn("godot_nvim: no formatter found; install gdscript-formatter or gdformat", full)
+    return false
+  end
+  if vim.fn.executable(cmd[1]) ~= 1 then
+    if full or not format_warned[cmd[1]] then
+      format_warned[cmd[1]] = true
+      format_warn(string.format("godot_nvim: formatter %s not found, set godot_nvim/formatter_command", cmd[1]), full)
+    end
+    return false
+  end
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local text = table.concat(lines, "\n") .. "\n"
+  local out, err = {}, {}
+  local job = vim.fn.jobstart(cmd, {
+    cwd = opts.root,
+    stdout_buffered = true,
+    stderr_buffered = true,
+    on_stdout = function(_, data) out = data end,
+    on_stderr = function(_, data) err = data end,
+  })
+  if job <= 0 then
+    format_warn("godot_nvim: could not run " .. table.concat(cmd, " "), full)
+    return false
+  end
+  vim.fn.chansend(job, text)
+  vim.fn.chanclose(job, "stdin")
+  local code = vim.fn.jobwait({ job }, 5000)[1]
+  if code == -1 then
+    vim.fn.jobstop(job)
+    format_warn("godot_nvim: " .. cmd[1] .. " timed out", full)
+    return false
+  elseif code ~= 0 then
+    local msg = vim.trim(table.concat(err, "\n"))
+    format_warn("godot_nvim: " .. cmd[1] .. " failed" .. (msg ~= "" and (": " .. msg) or ""), full)
+    return false
+  end
+  -- Buffered output ends with "" after the last newline.
+  if out[#out] == "" then
+    table.remove(out)
+  end
+  local formatted = table.concat(out, "\n") .. "\n"
+  if formatted == text then
+    return true
+  end
+  local hunks = text_diff(text, formatted, { result_type = "indices" })
+  -- Join the formatting with the last change, so one undo reverts both.
+  pcall(vim.cmd.undojoin)
+  for i = #hunks, 1, -1 do
+    local a, na, b, nb = unpack(hunks[i])
+    local repl = vim.list_slice(out, b, b + nb - 1)
+    if na == 0 then
+      vim.api.nvim_buf_set_lines(buf, a, a, false, repl)
+    else
+      vim.api.nvim_buf_set_lines(buf, a - 1, a - 1 + na, false, repl)
+    end
+  end
+  return true
+end
+
+vim.api.nvim_create_autocmd("BufWritePre", {
+  group = group,
+  pattern = "*.gd",
+  callback = function(ev)
+    if M.format_on_save and vim.b[ev.buf].godot_nvim_format ~= false then
+      M.format(ev.buf)
+    end
+  end,
+})
+
+vim.api.nvim_create_user_command("GodotFormat", function() M.format(0, nil, true) end,
+  { desc = "Format the GDScript buffer with gdscript-formatter or gdformat" })
+
 -- Godot theme ---------------------------------------------------------------
 -- The "godot" colorscheme (colors/godot.lua) is built from the script
 -- editor's colors, which Godot pushes with set_theme: keys are the settings

@@ -14,6 +14,12 @@ All notable changes to this plugin are listed here. Versions follow
 - Project → Tools → Create Neovim Editor Profiles: copies each editor feature
   profile to `<name>-neovim` with the Script screen hidden, and offers to
   switch to one. The README now recommends hiding the Script screen.
+- GDScript formatting on save, on by default. It uses GDQuest's
+  `gdscript-formatter` (including the copy its Godot add-on installs) or
+  gdtoolkit's `gdformat`, whichever is found, and does nothing if neither is
+  installed. Editor Settings → `godot_nvim/format_on_save` turns it off and
+  `godot_nvim/formatter_command` picks another command. `:GodotFormat`
+  formats on demand.
 
 ## [0.1.0] - 2026-10-25
 
