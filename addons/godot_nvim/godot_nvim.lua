@@ -59,6 +59,9 @@ vim.api.nvim_create_autocmd("VimEnter", { group = group, callback = add_runtime 
 -- original, then delete the quit buffer.
 
 local placeholder
+-- The window QuitPre opened, until the quit is over. :qa also fires QuitPre,
+-- so it is still there when Neovim exits.
+local quit_spare
 
 local function normal_wins()
   return vim.tbl_filter(function(w)
@@ -100,7 +103,9 @@ vim.api.nvim_create_autocmd("QuitPre", {
     local spare = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(spare, nb)
     vim.api.nvim_set_current_win(win)
+    quit_spare = spare
     vim.schedule(function()
+      quit_spare = nil
       if vim.api.nvim_win_is_valid(win) then
         -- Quit refused (E37, unsaved changes): undo.
         if vim.api.nvim_win_is_valid(spare) then
@@ -142,6 +147,10 @@ function M.save_session()
   if not any then
     os.remove(file)
     return
+  end
+  -- Leave out the window QuitPre opened for :qa.
+  if quit_spare and vim.api.nvim_win_is_valid(quit_spare) and #normal_wins() > 1 then
+    pcall(vim.api.nvim_win_close, quit_spare, true)
   end
   vim.fn.mkdir(vim.fn.fnamemodify(file, ":h"), "p")
   local saved = vim.o.sessionoptions
