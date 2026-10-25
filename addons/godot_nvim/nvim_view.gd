@@ -29,6 +29,9 @@ signal nvim_exited
 ## Godot's GDScript language server; port 0 leaves LSP to the user's config.
 @export var lsp_host := "127.0.0.1"
 @export var lsp_port := 0
+## Where Neovim saves its open files and layout when it exits, and restores
+## them from when it starts. Empty for neither.
+@export var session_file := ""
 ## Start Neovim again (on the last file) if it exits on its own, e.g. :qa.
 @export var auto_restart := true
 ## Key presses matching these go to the editor instead of Neovim, so editor
@@ -42,6 +45,9 @@ var drop_builder := Callable()
 var rpc := NvimRpc.new()
 var grid := NvimGrid.new()
 var attached := false
+## Neovim has finished starting (config loaded, session restored), and
+## takes files.
+var entered := false
 
 var _cell := Vector2(8, 16)
 var _ascent := 12.0
@@ -50,6 +56,8 @@ var _mouse_button := ""
 ## Last file shown, reopened after a restart.
 var _last_file := ""
 var _restarting := false
+## [path, line, column] asked for before [member entered].
+var _pending_open := []
 var _last_mouse_cell := Vector2i(-1, -1)
 
 
@@ -95,6 +103,7 @@ func start() -> Error:
 
 func stop() -> void:
 	attached = false
+	entered = false
 	rpc.stop()
 
 
@@ -104,17 +113,28 @@ func open_file(path: String, line := 0, column := 0) -> void:
 		start()
 	var abs_path := ProjectSettings.globalize_path(path)
 	_last_file = abs_path
+	grab_focus()
+	if not entered:
+		_pending_open = [abs_path, line, column]
+		return
 	rpc.request("nvim_exec_lua", [
 		"local p, l, c = ... vim.cmd.drop(vim.fn.fnameescape(vim.fn.fnamemodify(p, ':~:.')))" +
 		" if l > 0 then pcall(vim.api.nvim_win_set_cursor, 0, {l, math.max(c - 1, 0)}) vim.cmd('normal! zz') end",
 		[abs_path, line, column]])
-	grab_focus()
 
 
 ## Writes every modified buffer, waiting for Neovim to finish.
 func save_all() -> void:
 	if attached:
 		rpc.request_sync("nvim_command", ["silent! wall"])
+
+
+## Changes [member session_file] while Neovim runs; it takes effect when
+## Neovim exits.
+func set_session_file(path: String) -> void:
+	session_file = path
+	if attached:
+		rpc.request("nvim_exec_lua", ["godot_nvim.session = ...", [path if path != "" else null]])
 
 
 ## Marks methods in [param path]'s buffer that scene signals connect to.
@@ -173,6 +193,8 @@ func _on_api_info(err: Variant, res: Variant) -> void:
 	var src := FileAccess.get_file_as_string(get_script().resource_path.get_base_dir().path_join("godot_nvim.lua"))
 	var opts := {"root": working_dir if working_dir != "" else ProjectSettings.globalize_path("res://")}
 	opts["runtime"] = ProjectSettings.globalize_path(get_script().resource_path.get_base_dir().path_join("nvim"))
+	if session_file != "":
+		opts["session"] = session_file
 	if lsp_port > 0:
 		opts["lsp"] = {"host": lsp_host, "port": lsp_port}
 	rpc.request("nvim_exec_lua", [src, [chan, opts]])
@@ -201,6 +223,12 @@ func _on_notification(method: String, params: Array) -> void:
 		"godot_nvim_run":
 			var arg: String = params[1] if params.size() > 1 else ""
 			run_requested.emit(params[0], ProjectSettings.localize_path(arg) if arg != "" else "")
+		"godot_nvim_entered":
+			entered = true
+			if not _pending_open.is_empty():
+				var p: Array = _pending_open
+				_pending_open = []
+				open_file(p[0], p[1], p[2])
 		"godot_nvim_buf_enter":
 			if params[0] != "":
 				_last_file = params[0]
@@ -209,6 +237,7 @@ func _on_notification(method: String, params: Array) -> void:
 
 func _on_exited() -> void:
 	attached = false
+	entered = false
 	nvim_exited.emit()
 	queue_redraw()
 	if auto_restart and is_inside_tree():

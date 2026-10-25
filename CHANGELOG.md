@@ -4,6 +4,23 @@ All notable changes to this plugin are listed here. Versions follow
 [Semantic Versioning](https://semver.org/); the version lives in
 `addons/godot_nvim/plugin.cfg`.
 
+## [Unreleased]
+
+### Added
+
+- Open files, cursor positions, splits and tabs are saved when the editor
+  closes (or Neovim quits) and restored when the project opens again. The
+  session lives in `.godot/godot_nvim/session.vim`. Editor Settings →
+  `godot_nvim/restore_session` turns it off.
+
+### Fixed
+
+- A file opened from Godot while Neovim was still starting lost its line:
+  Godot now holds files back until Neovim has started.
+- The plugin failed to load on Godot 4.5, which lacks
+  `EditorSettings.get_shortcut()`. There, the run shortcuts that work while
+  typing are taken from the editor's run bar.
+
 ## [0.2.0] - 2026-10-25
 
 ### Added

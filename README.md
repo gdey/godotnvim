@@ -66,6 +66,28 @@ Neovim starts in the project folder and loads your usual config.
   file (or an empty placeholder) shows, and Neovim keeps running. If Neovim exits anyway
   (`:qa`, a crash), it restarts on the last file.
 
+## Reopening files
+
+When the editor closes, Neovim saves which files are open, where the cursor
+is in each, and the splits and tabs. The next time you open the project they
+come back as you left them. A file you open from Godot at startup, such as by
+double-clicking a script, lands on top of the restored layout.
+
+![The Neovim tab after reopening the project: two splits and a second tab, as they were left](docs/screenshots/session-restored.png)
+
+The session is per project, in `.godot/godot_nvim/session.vim` (Godot keeps
+`.godot/` out of version control). It's written with `:mksession`, without
+options, mappings or the working directory, which stay with your config.
+Windows on scratch buffers, such as file trees, aren't saved, and files
+deleted in the meantime don't come back. Leaving Neovim with `:qa` saves the
+session too, so the restart that follows restores it.
+
+To turn this off, for example because a session plugin of your own does the
+same, clear Editor Settings → `godot_nvim/restore_session` (Advanced Settings
+must be on to see it).
+
+![Editor Settings, Godot Nvim section: Restore Session](docs/screenshots/session-settings.png)
+
 ## Hiding the Script screen
 
 Godot still opens its own script editor alongside Neovim, so the Script tab
@@ -246,6 +268,7 @@ Editor Settings → `godot_nvim/`:
 | `use_editor_colors` | on | Use the `godot` colorscheme built from the script editor's colors |
 | `format_on_save` | on | Format `.gd` files when saving, if a formatter is installed |
 | `formatter_command` | empty: `gdscript-formatter`, else `gdformat -` | The formatter command; reads stdin, prints the result |
+| `restore_session` | on | Save the open files, cursors, splits and tabs on close and restore them on open |
 
 Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 `:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
@@ -272,7 +295,7 @@ Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 | `nvim_view.gd` | Control that draws the grid and sends keyboard, mouse and drops to Neovim |
 | `nvim_keys.gd` | Turns Godot key events into Neovim key notation |
 | `drop_text.gd` | Builds the text for dropped nodes and files, matching Godot's script editor |
-| `godot_nvim.lua` | Neovim side: save and buffer notifications, `:q` handling, drop insertion, breakpoint, signal and override signs, LSP setup, run commands |
+| `godot_nvim.lua` | Neovim side: save and buffer notifications, `:q` handling, sessions, drop insertion, breakpoint, signal and override signs, LSP setup, run commands |
 | `theme_colors.gd` | Reads the script editor's colors for Neovim's `godot` colorscheme |
 | `nvim/colors/godot.lua` | The `godot` colorscheme (needs the colors from the editor) |
 | `debugger_bridge.gd` | EditorDebuggerPlugin: forwards the debugger's go-to-line and breakpoint events |
