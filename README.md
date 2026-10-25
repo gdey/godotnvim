@@ -195,6 +195,14 @@ To keep your own colorscheme, clear Editor Settings →
 example after restarting the editor). `:colorscheme godot` switches back to the
 editor's colors at any time.
 
+To go the other way and give Godot the colors of a Vim colorscheme, use
+[`colorscheme/`](colorscheme/README.md): a Go tool that converts any scheme
+from [vimcolorschemes.com](https://vimcolorschemes.com/) into a Godot editor
+theme (script-editor colors and interface colors). Neovim then follows that
+theme through the `godot` colorscheme.
+
+![cendre, converted from Vim, in the Godot script editor](docs/screenshots/colorscheme-cendre.png)
+
 ## Language server
 
 The plugin connects `.gd` buffers to the GDScript language server that the
