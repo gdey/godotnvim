@@ -536,6 +536,81 @@ end
 vim.api.nvim_create_user_command("GodotConnections", M.show_connections,
   { desc = "Show the Godot signals connected to, and the method overridden by, the function under the cursor" })
 
+-- Finding functions -----------------------------------------------------------
+-- Godot's language server has no workspace/symbol, so :GodotFunc scans the
+-- project's .gd files itself. Loaded buffers are read as they are in Neovim.
+
+-- Returns { file, lnum, name, text } for every func in the project.
+function M.project_funcs()
+  local loaded = {}
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(b) and bufname(b):match("%.gd$") then
+      loaded[bufname(b)] = b
+    end
+  end
+  local out = {}
+  for _, f in ipairs(vim.fn.globpath(vim.fn.getcwd(), "**/*.gd", false, true)) do
+    f = vim.fs.normalize(f)
+    if not f:match("/%.godot/") then
+      local lines = loaded[f] and vim.api.nvim_buf_get_lines(loaded[f], 0, -1, false) or vim.fn.readfile(f)
+      for i, l in ipairs(lines) do
+        local name = l:match("^%s*func%s+([%w_]+)%s*%(") or l:match("^%s*static%s+func%s+([%w_]+)%s*%(")
+        if name then
+          table.insert(out, { file = f, lnum = i, name = name, text = vim.trim(l) })
+        end
+      end
+    end
+  end
+  return out
+end
+
+-- Opens the func called [name]. With several, or with no exact match but
+-- some funcs containing [name], fills the quickfix list instead.
+function M.find_func(name)
+  local exact, partial = {}, {}
+  local lname = name:lower()
+  for _, f in ipairs(M.project_funcs()) do
+    if f.name == name then
+      table.insert(exact, f)
+    elseif f.name:lower():find(lname, 1, true) then
+      table.insert(partial, f)
+    end
+  end
+  local hits = #exact > 0 and exact or partial
+  if #hits == 0 then
+    vim.notify("No function matching " .. name, vim.log.levels.WARN)
+  elseif #hits == 1 and #exact == 1 then
+    vim.cmd("normal! m'")
+    vim.cmd.edit(vim.fn.fnameescape(hits[1].file))
+    vim.api.nvim_win_set_cursor(0, { hits[1].lnum, 0 })
+    vim.cmd("normal! ^zz")
+  else
+    vim.fn.setqflist({}, " ", {
+      title = ":GodotFunc " .. name,
+      items = vim.tbl_map(function(f)
+        return { filename = f.file, lnum = f.lnum, text = f.text }
+      end, hits),
+    })
+    vim.cmd("botright copen")
+  end
+end
+
+vim.api.nvim_create_user_command("GodotFunc", function(o) M.find_func(o.args) end, {
+  nargs = 1,
+  complete = function(lead)
+    local seen, names = {}, {}
+    for _, f in ipairs(M.project_funcs()) do
+      if not seen[f.name] and vim.startswith(f.name, lead) then
+        seen[f.name] = true
+        table.insert(names, f.name)
+      end
+    end
+    table.sort(names)
+    return names
+  end,
+  desc = "Open the GDScript function with this name (several matches go to the quickfix list)",
+})
+
 vim.api.nvim_create_autocmd({ "TextChanged", "InsertLeave" }, {
   group = group,
   callback = function(ev)

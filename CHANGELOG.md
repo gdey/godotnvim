@@ -4,6 +4,14 @@ All notable changes to this plugin are listed here. Versions follow
 [Semantic Versioning](https://semver.org/); the version lives in
 `addons/godot_nvim/plugin.cfg`.
 
+## [Unreleased]
+
+### Added
+
+- `:GodotFunc <name>` opens a GDScript function by name from anywhere in the
+  project, with name completion. Several matches, or partial ones, go to the
+  quickfix list. Godot's language server has no workspace symbol search.
+
 ## [0.1.0] - 2026-10-25
 
 First release.

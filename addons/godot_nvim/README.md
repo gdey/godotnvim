@@ -8,6 +8,7 @@ inside the Godot editor with Neovim's UI protocol.
 - Drag nodes from the Scene dock to insert `$Path` (Ctrl/Cmd: `@onready var`),
   or files from the FileSystem dock to insert paths (Ctrl/Cmd: `preload`).
 - GDScript language server is connected: hover docs, definitions, completion.
+  `:GodotFunc <name>` jumps to a function anywhere in the project.
 - Debugger breakpoints show as signs and stay in sync with Godot; toggle them
   with `F9` or a double-click in the gutter. Debugger double-clicks jump to
   the line.
