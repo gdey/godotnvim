@@ -159,6 +159,8 @@ Godot's script editor, after Neovim asks you to confirm. A script that has error
 not extend `EditorScript` is not run, and the reason shows in Neovim and in
 Godot's Output panel. `print()` output goes to the Output panel.
 
+![:GodotRunFile runs an EditorScript that lists the scene's nodes; its output shows in the Output panel](docs/screenshots/run-file.png)
+
 ## Debugger
 
 - Breakpoints show as `●` signs in Neovim's sign column (highlight group
