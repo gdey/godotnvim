@@ -139,6 +139,25 @@ bindings in Editor Settings → Shortcuts. The same actions are commands:
 | `:GodotRunScene [file]` | Run a `.tscn`/`.scn` (completes file names); without a file, pick one as Godot does |
 | `:GodotPause` | Pause or resume the running project |
 | `:GodotStop` | Stop the running project |
+| `:GodotRunFile [file]` | Run an `EditorScript`, as the script editor's File → Run does; without a file, the current buffer |
+
+`:GodotRunFile` runs scripts that start with `@tool` and extend
+`EditorScript`, calling their `_run()` in the editor, for one-off editor
+tasks:
+
+```gdscript
+@tool
+extends EditorScript
+
+func _run() -> void:
+	print(EditorInterface.get_edited_scene_root())
+```
+
+Godot runs the file as saved, so the command writes its buffer first when it
+has unsaved changes. Files outside the project run too, as they do from
+Godot's script editor, after Neovim asks you to confirm. A script that has errors, is not a tool script, or does
+not extend `EditorScript` is not run, and the reason shows in Neovim and in
+Godot's Output panel. `print()` output goes to the Output panel.
 
 ## Debugger
 
@@ -288,7 +307,7 @@ Editor Settings → `godot_nvim/`:
 | `restore_session` | on | Save the open files, cursors, splits and tabs on close and restore them on open |
 
 Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
-`:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
+`:GodotRunFile`, `:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
 `:GodotFunc`, `:GodotFormat`, and `:colorscheme godot`.
 
 ## Known gaps
@@ -325,7 +344,8 @@ Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 NVIM=/path/to/nvim godot --headless --path . -s tests/run_tests.gd
 ```
 
-The first run in a fresh checkout needs `godot --headless --path . --editor --quit`
+Add `--editor` to also test running an `EditorScript`, which only the editor
+can do. The first run in a fresh checkout needs `godot --headless --path . --editor --quit`
 first, so Godot registers the addon's `class_name`s.
 
 ## Releasing
