@@ -16,7 +16,8 @@ signal modified_changed(paths: PackedStringArray)
 ## The user toggled a breakpoint in Neovim; [param line] is 1-based.
 signal breakpoint_requested(path: String, line: int, enabled: bool)
 ## A :Godot run command: [param action] is "project", "current", "scene"
-## (with [param arg] a scene path, or "" to pick one), "pause" or "stop".
+## (with [param arg] a scene path, or "" to pick one), "file" (with
+## [param arg] an EditorScript to run), "pause" or "stop".
 signal run_requested(action: String, arg: String)
 signal nvim_exited
 
@@ -181,6 +182,13 @@ func set_skip_breakpoints(skip: bool) -> void:
 		rpc.request("nvim_exec_lua", ["godot_nvim.set_skip_breakpoints(...)", [skip]])
 
 
+## Shows [param msg] in Neovim with vim.notify; [param level] is a
+## vim.log.levels value (2 info, 3 warn, 4 error).
+func notify(msg: String, level := 2) -> void:
+	if attached:
+		rpc.request("nvim_exec_lua", ["vim.notify(...)", [msg, level]])
+
+
 func cell_size() -> Vector2:
 	return _cell
 
@@ -192,6 +200,7 @@ func _on_api_info(err: Variant, res: Variant) -> void:
 	var chan: int = res[0]
 	var src := FileAccess.get_file_as_string(get_script().resource_path.get_base_dir().path_join("godot_nvim.lua"))
 	var opts := {"root": working_dir if working_dir != "" else ProjectSettings.globalize_path("res://")}
+	opts["project"] = ProjectSettings.globalize_path("res://")
 	opts["runtime"] = ProjectSettings.globalize_path(get_script().resource_path.get_base_dir().path_join("nvim"))
 	if session_file != "":
 		opts["session"] = session_file

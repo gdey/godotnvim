@@ -276,8 +276,8 @@ func _godot_breakpoints() -> Dictionary:
 
 # --- Running -----------------------------------------------------------------
 
-## Handles :GodotRun, :GodotRunCurrent, :GodotRunScene, :GodotPause and
-## :GodotStop.
+## Handles :GodotRun, :GodotRunCurrent, :GodotRunScene, :GodotRunFile,
+## :GodotPause and :GodotStop.
 func _run(action: String, arg: String) -> void:
 	match action:
 		"project":
@@ -293,6 +293,11 @@ func _run(action: String, arg: String) -> void:
 				EditorInterface.play_custom_scene(arg)
 			else:
 				push_warning("godot_nvim: not a scene: " + arg)
+		"file":
+			var err := run_editor_script(arg)
+			if err != "":
+				push_warning("godot_nvim: " + err)
+				view.notify("GodotRunFile: " + err, 3)
 		"stop":
 			EditorInterface.stop_playing_scene()
 		"pause":
@@ -310,6 +315,30 @@ func _run(action: String, arg: String) -> void:
 			if b and not b.disabled:
 				b.button_pressed = not b.button_pressed
 				b.pressed.emit()
+
+
+## Runs the script at [param path] as the script editor's File > Run does
+## (EditorNode::run_editor_script, which is not exposed): reload it from
+## disk, check it is a @tool script extending EditorScript, and call _run().
+## [param path] is a res:// path, or absolute for a file outside the project.
+## Returns why it could not run, or "".
+static func run_editor_script(path: String) -> String:
+	if not ResourceLoader.exists(path, "Script"):
+		return "not a script: " + path
+	var scr: Script = ResourceLoader.load(path)
+	if not scr:
+		return "not a script: " + path
+	# The cached copy may be older than the file (written outside Neovim).
+	scr.source_code = FileAccess.get_file_as_string(path)
+	if scr.reload(true) != OK:
+		return "%s has errors, see the Output panel" % path
+	if not ClassDB.is_parent_class(scr.get_instance_base_type(), "EditorScript"):
+		return "%s does not extend EditorScript" % path
+	if not scr.is_tool():
+		return "%s is not a tool script (add @tool at the top)" % path
+	var es: Object = scr.new()
+	es.call("_run")
+	return ""
 
 
 ## The editor shortcut [param name], or null before Godot 4.6, which lacks

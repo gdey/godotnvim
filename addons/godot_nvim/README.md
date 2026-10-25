@@ -23,6 +23,7 @@ inside the Godot editor with Neovim's UI protocol.
 - Neovim uses the script editor's colors and follows theme changes.
 - Godot's run, pause and stop shortcuts work while typing, and as
   `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`, `:GodotPause`, `:GodotStop`.
+- `:GodotRunFile [file]` runs an `EditorScript`, as File → Run does.
 
 ## Requirements
 

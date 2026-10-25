@@ -1,6 +1,7 @@
 -- Neovim-side helpers for the godot_nvim plugin. Loaded with nvim_exec_lua,
 -- which passes the Godot channel id and an options table:
 --   root: project folder
+--   project: the Godot project's folder (res://)
 --   lsp:  { host = ..., port = ... } to attach Godot's GDScript language
 --         server to gdscript buffers, or nil to leave LSP to the user's config
 --   runtime: folder with this plugin's runtime files (colors/godot.lua)
@@ -326,6 +327,33 @@ end, {
     end, vim.fn.getcompletion(lead, "file"))
   end,
   desc = "Run a Godot scene (pick one when no file is given)",
+})
+-- The script editor's File > Run: runs a @tool script that extends
+-- EditorScript. Godot runs the text on disk, so write the file's buffer first
+-- if it has unsaved changes, as File > Run applies the editor's text. Files
+-- outside the project run too, as in Godot, after asking.
+function M.run_file(file)
+  local path = file and file ~= "" and vim.fs.normalize(vim.fn.fnamemodify(file, ":p")) or bufname(0)
+  if path == "" then
+    vim.notify("GodotRunFile: the buffer has no file", vim.log.levels.WARN)
+    return
+  end
+  local root = opts.project and vim.fs.normalize(opts.project):gsub("/$", "") .. "/"
+  if root and path:sub(1, #root) ~= root
+    and vim.fn.confirm(path .. " is outside the project. Run it in the editor?", "&Run\n&Cancel", 2) ~= 1 then
+    return
+  end
+  local buf = vim.fn.bufnr(path)
+  if buf > 0 and vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].modified then
+    vim.api.nvim_buf_call(buf, function() vim.cmd("silent update") end)
+  end
+  run("file", path)
+end
+
+vim.api.nvim_create_user_command("GodotRunFile", function(o) M.run_file(o.args) end, {
+  nargs = "?",
+  complete = "file",
+  desc = "Run an EditorScript, as File > Run does (the current file when none is given)",
 })
 vim.api.nvim_create_user_command("GodotPause", function() run("pause") end,
   { desc = "Pause or resume the running Godot project" })

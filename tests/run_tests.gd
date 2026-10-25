@@ -1,5 +1,6 @@
 ## Headless tests. Run with:
 ##   godot --headless --path . -s tests/run_tests.gd
+## Add --editor to also run an EditorScript (:GodotRunFile).
 ## Set NVIM to the nvim binary if it is not on PATH.
 extends SceneTree
 
@@ -14,6 +15,7 @@ func _init() -> void:
 	_test_overrides()
 	_test_editor_profiles()
 	_test_find_executable()
+	_test_run_editor_script()
 	await _test_embed()
 	await _test_view_drop()
 	await _test_session()
@@ -221,6 +223,49 @@ func _test_find_executable() -> void:
 	check(find.call("godot-nvim-no-such-tool") == "", "missing bare name")
 
 
+func _test_run_editor_script() -> void:
+	print("run editor script")
+	var run: Callable = load("res://addons/godot_nvim/plugin.gd").run_editor_script
+	var dir := "res://tests/run_tmp"
+	DirAccess.make_dir_recursive_absolute(dir)
+	var scripts := {
+		"ok.gd": "@tool\nextends EditorScript\nfunc _run():\n\tEngine.set_meta(\"godot_nvim_ran\", Engine.get_meta(\"godot_nvim_ran\", 0) + 1)\n",
+		"not_tool.gd": "extends EditorScript\nfunc _run():\n\tpass\n",
+		"node.gd": "@tool\nextends Node\n",
+		"broken.gd": "@tool\nextends EditorScript\nfunc _run(:\n",
+	}
+	for name in scripts:
+		var f := FileAccess.open(dir.path_join(name), FileAccess.WRITE)
+		f.store_string(scripts[name])
+		f.close()
+	# Only the editor can make an EditorScript.
+	if Engine.is_editor_hint():
+		check(run.call(dir.path_join("ok.gd")) == "" and Engine.get_meta("godot_nvim_ran", 0) == 1, "runs _run()")
+		# Edits on disk are picked up, as after :w.
+		var f := FileAccess.open(dir.path_join("ok.gd"), FileAccess.WRITE)
+		f.store_string(scripts["ok.gd"].replace("+ 1", "+ 10"))
+		f.close()
+		check(run.call(dir.path_join("ok.gd")) == "" and Engine.get_meta("godot_nvim_ran", 0) == 11, "reloads from disk: %s" % Engine.get_meta("godot_nvim_ran", 0))
+		# Files outside the project run too, as in Godot's script editor.
+		var outside := OS.get_cache_dir().path_join("godot_nvim_outside.gd")
+		f = FileAccess.open(outside, FileAccess.WRITE)
+		f.store_string(scripts["ok.gd"].replace("+ 1", "+ 100"))
+		f.close()
+		check(run.call(outside) == "" and Engine.get_meta("godot_nvim_ran", 0) == 111, "runs a file outside the project: %s" % Engine.get_meta("godot_nvim_ran", 0))
+		DirAccess.remove_absolute(outside)
+	else:
+		print("  skip running an EditorScript (needs --editor)")
+	check("not a tool script" in run.call(dir.path_join("not_tool.gd")), "refuses non-tool script")
+	check("does not extend EditorScript" in run.call(dir.path_join("node.gd")), "refuses non-EditorScript")
+	check("has errors" in run.call(dir.path_join("broken.gd")), "refuses script with errors")
+	check("not a script" in run.call("res://project.godot"), "refuses non-script")
+	check("not a script" in run.call(OS.get_cache_dir().path_join("godot_nvim_missing.gd")), "refuses a missing file")
+	for name in scripts:
+		DirAccess.remove_absolute(dir.path_join(name))
+	DirAccess.remove_absolute(dir)
+	Engine.remove_meta("godot_nvim_ran")
+
+
 func _wait(cond: Callable, ms := 3000) -> bool:
 	var deadline := Time.get_ticks_msec() + ms
 	while Time.get_ticks_msec() < deadline:
@@ -335,9 +380,23 @@ func _test_view_drop() -> void:
 	view.run_requested.connect(func(a, arg): runs.append([a, arg]))
 	view.rpc.request("nvim_command", ["GodotRun"])
 	view.rpc.request("nvim_command", ["GodotRunScene " + ProjectSettings.globalize_path("res://main.tscn")])
+	await _req(view, "nvim_command", ["GodotRunFile " + ProjectSettings.globalize_path("res://tools/gen.gd")])
+	# No file: the current buffer's, written first when modified. It is
+	# outside the project, so Neovim asks first: cancel, then run.
+	await _req(view, "nvim_command", ["set modified"])
+	for key in ["c", "r"]:
+		view.rpc.request("nvim_command", ["GodotRunFile"])
+		var asking := await _wait(func():
+			var m := view.rpc.request_sync("nvim_get_mode")
+			# Neovim 0.12 reports the prompt as mode "r?"; older ones as blocking.
+			return m[1] is Dictionary and (m[1].get("blocking", false) or m[1].get("mode") == "r?"))
+		check(asking, ":GodotRunFile asks before running a file outside the project")
+		view.rpc.request("nvim_input", [key])
+		var mod: Array = await _req(view, "nvim_eval", ["&modified"])
+		check(mod[1] == (1 if key == "c" else 0), "%s: buffer modified = %s" % [key, mod])
 	view.rpc.request("nvim_command", ["GodotStop"])
-	await _wait(func(): return runs.size() >= 3)
-	check(runs == [["project", ""], ["scene", "res://main.tscn"], ["stop", ""]], "run commands: %s" % [runs])
+	await _wait(func(): return runs.size() >= 5)
+	check(runs == [["project", ""], ["scene", "res://main.tscn"], ["file", "res://tools/gen.gd"], ["file", path], ["stop", ""]], "run commands: %s" % [runs])
 	# Drop onto row 2 ("func _ready():") inserts the line above it.
 	view.drop_text_at(Vector2i(3, 2), {"kind": "lines", "text": "@onready var player: Node = $Player\n"})
 	check(await _wait(func(): return view.grid.row_string(2).begins_with("@onready var player")), "onready line inserted at drop row")
