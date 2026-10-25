@@ -66,6 +66,34 @@ Neovim starts in the project folder and loads your usual config.
   file (or an empty placeholder) shows, and Neovim keeps running. If Neovim exits anyway
   (`:qa`, a crash), it restarts on the last file.
 
+## Hiding the Script screen
+
+Godot still opens its own script editor alongside Neovim, so the Script tab
+is best hidden with an editor feature profile. The plugin keeps working with
+it hidden: files open in Neovim, and breakpoints still sync.
+
+![The main screen tabs with no profile, and with Default-neovim](docs/screenshots/profiles-main-screens.png)
+
+**Project → Tools → Create Neovim Editor Profiles** does this for you:
+
+![Project → Tools → Create Neovim Editor Profiles](docs/screenshots/profiles-tools-menu.png)
+
+For every profile you have (Editor → Manage Editor Features), it saves a copy
+named `<name>-neovim` with the Script screen turned off. If you have no
+profiles, it makes `Default-neovim`. Profiles that already end in `-neovim`
+are skipped, and existing `-neovim` copies aren't overwritten, so delete one
+to regenerate it. It then offers to switch to the `-neovim` copy of your
+current profile, which restarts the editor:
+
+![The dialog after creating the profiles](docs/screenshots/profiles-dialog.png)
+
+To switch profiles later, or to do it by hand, open Editor → Manage Editor
+Features. Pick a profile and press **Make Current** (or **Reset to Default**
+for no profile). The **Script Editor** box under Main Features is what shows
+or hides the Script tab.
+
+![Manage Editor Feature Profiles with Script Editor unticked](docs/screenshots/profiles-manage-features.png)
+
 ## Running the project
 
 Godot's run shortcuts work while typing in Neovim: Run Project, Run Current
@@ -213,6 +241,7 @@ Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 | `theme_colors.gd` | Reads the script editor's colors for Neovim's `godot` colorscheme |
 | `nvim/colors/godot.lua` | The `godot` colorscheme (needs the colors from the editor) |
 | `debugger_bridge.gd` | EditorDebuggerPlugin: forwards the debugger's go-to-line and breakpoint events |
+| `editor_profiles.gd` | Makes the `-neovim` editor feature profiles |
 | `plugin.gd` | EditorPlugin: the main-screen tab, opening files, editor settings, breakpoint/connection/override/color sync, run actions |
 
 ## Tests

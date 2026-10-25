@@ -11,6 +11,9 @@ All notable changes to this plugin are listed here. Versions follow
 - `:GodotFunc <name>` opens a GDScript function by name from anywhere in the
   project, with name completion. Several matches, or partial ones, go to the
   quickfix list. Godot's language server has no workspace symbol search.
+- Project → Tools → Create Neovim Editor Profiles: copies each editor feature
+  profile to `<name>-neovim` with the Script screen hidden, and offers to
+  switch to one. The README now recommends hiding the Script screen.
 
 ## [0.1.0] - 2026-10-25
 
