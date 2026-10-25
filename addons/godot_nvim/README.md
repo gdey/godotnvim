@@ -4,11 +4,18 @@ Edit GDScript, shaders and other text files in an embedded Neovim, drawn
 inside the Godot editor with Neovim's UI protocol.
 
 - Scripts, shaders, JSON and plain text files open in a **Neovim** main-screen tab.
+  Your Neovim config, plugins and keymaps load as usual.
 - Drag nodes from the Scene dock to insert `$Path` (Ctrl/Cmd: `@onready var`),
   or files from the FileSystem dock to insert paths (Ctrl/Cmd: `preload`).
 - GDScript language server is connected: hover docs, definitions, completion.
-- Debugger breakpoints show as signs; toggle them with `F9`. Debugger
-  double-clicks jump to the line.
+- Debugger breakpoints show as signs and stay in sync with Godot; toggle them
+  with `F9` or a double-click in the gutter. Debugger double-clicks jump to
+  the line.
+- Signs mark methods connected to signals (`⇠`) and methods that override a
+  base class (`↱`); `:GodotConnections` lists them.
+- Neovim uses the script editor's colors and follows theme changes.
+- Godot's run, pause and stop shortcuts work while typing, and as
+  `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`, `:GodotPause`, `:GodotStop`.
 
 ## Requirements
 

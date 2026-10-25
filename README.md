@@ -1,11 +1,21 @@
 # godotnvim
 
-A Godot 4 editor plugin that edits GDScript in an embedded Neovim, drawn
-inside the editor with Neovim's UI protocol (`ext_linegrid`). Dragging nodes
-or files from the editor's docks onto the Neovim view inserts the same text
-Godot's own script editor does.
+A Godot 4 editor plugin that edits GDScript, shaders and other text files in
+an embedded Neovim, drawn inside the editor with Neovim's UI protocol
+(`ext_linegrid`). It keeps the parts of Godot's script editor that matter:
 
-![Neovim tab with a breakpoint sign and LSP diagnostics](docs/screenshots/breakpoints.png)
+- dragging nodes or files from the editor's docks inserts the same text Godot
+  does;
+- the GDScript language server gives hover docs, definitions and completion;
+- debugger breakpoints show in the gutter, in sync with Godot's debugger;
+- signs mark methods that signals connect to and methods that override a base
+  class;
+- Neovim takes its colors from the script editor's theme;
+- Godot's run, pause and stop shortcuts keep working while you type.
+
+Your Neovim config, plugins and keymaps load as usual.
+
+![Neovim tab with breakpoint, override and signal signs in the editor's colors](docs/screenshots/overview.png)
 
 ## Requirements
 
@@ -45,6 +55,9 @@ Neovim starts in the project folder and loads your usual config.
   `text_editor/completion/add_type_hints`.
 - Drag files from the FileSystem dock to insert `"res://path"`, or with
   Ctrl/Cmd held, `const Name = preload("res://path")`.
+
+  ![Ctrl-dropping two nodes inserts @onready vars](docs/screenshots/drag-and-drop.png)
+
 - `:w` saves, and Godot reloads the script, shader or JSON.
 - Like Godot's own script editor, unsaved Neovim buffers are written when you
   save a scene or run the project, and Godot asks about them when it closes.
@@ -71,7 +84,8 @@ bindings in Editor Settings → Shortcuts. The same actions are commands:
 ## Debugger
 
 - Breakpoints show as `●` signs in Neovim's sign column (highlight group
-  `GodotBreakpoint`, linked to `DiagnosticError`). They stay in sync with
+  `GodotBreakpoint`: the editor's breakpoint color, or `DiagnosticError` with
+  your own colorscheme). They stay in sync with
   Godot's Breakpoints list, whether you set them from Neovim, Godot's own
   editor gutter, or the debugger panel. While the debugger's **Skip
   Breakpoints** is on, the signs turn grey (`GodotBreakpointSkipped`, linked
@@ -84,8 +98,6 @@ bindings in Editor Settings → Shortcuts. The same actions are commands:
 - Signs move with your edits. On `:w`, Godot's breakpoints move to match.
 - Double-clicking a breakpoint, an error or a stack frame in the debugger
   opens the file in Neovim at that line.
-
-![Ctrl-dropping two nodes inserts @onready vars](docs/screenshots/drag-and-drop.png)
 
 ## Signal connections and overrides
 
@@ -155,6 +167,21 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
 ![Hover docs from Godot's language server](docs/screenshots/lsp-hover.png)
 
+## Settings
+
+Editor Settings → `godot_nvim/`:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `nvim_path` | found automatically | The `nvim` binary |
+| `nvim_args` | empty | Extra arguments for Neovim, such as `-u NONE` |
+| `connect_lsp` | on | Attach Godot's GDScript language server to `.gd` buffers |
+| `use_editor_colors` | on | Use the `godot` colorscheme built from the script editor's colors |
+
+Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
+`:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
+and `:colorscheme godot`.
+
 ## Known gaps
 
 - Godot's breakpoint API lives in its own script editor, so the plugin keeps
@@ -176,11 +203,11 @@ vim.api.nvim_create_autocmd("LspAttach", {
 | `nvim_view.gd` | Control that draws the grid and sends keyboard, mouse and drops to Neovim |
 | `nvim_keys.gd` | Turns Godot key events into Neovim key notation |
 | `drop_text.gd` | Builds the text for dropped nodes and files, matching Godot's script editor |
-| `godot_nvim.lua` | Neovim-side helpers: save and buffer notifications, drop insertion |
+| `godot_nvim.lua` | Neovim side: save and buffer notifications, `:q` handling, drop insertion, breakpoint, signal and override signs, LSP setup, run commands |
 | `theme_colors.gd` | Reads the script editor's colors for Neovim's `godot` colorscheme |
 | `nvim/colors/godot.lua` | The `godot` colorscheme (needs the colors from the editor) |
 | `debugger_bridge.gd` | EditorDebuggerPlugin: forwards the debugger's go-to-line and breakpoint events |
-| `plugin.gd` | EditorPlugin: the main-screen tab, opening scripts, editor settings |
+| `plugin.gd` | EditorPlugin: the main-screen tab, opening files, editor settings, breakpoint/connection/override/color sync, run actions |
 
 ## Tests
 

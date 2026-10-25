@@ -141,7 +141,7 @@ func _test_drop_text() -> void:
 	check(sn == holder, "finds script node")
 	var data := {"type": "nodes", "nodes": [player.get_path()]}
 	check(DropText.build(data, main, main, false, true) == {"kind": "text", "text": "$Player"}, "plain drop")
-	check(DropText.build(data, main, holder, false, true)["text"] == "$../Player", "relative to script node")
+	check(DropText.build(data, main, holder, false, true)["text"] == "$\"../Player\"", "relative to script node (quoted, like Godot)")
 	data = {"type": "nodes", "nodes": [odd.get_path(), hud.get_path()]}
 	check(DropText.build(data, main, main, false, true)["text"] == "$\"Player/Odd Name\", %HUD", "quoted + unique")
 	var r := DropText.build(data, main, main, true, true)
