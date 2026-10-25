@@ -17,6 +17,9 @@ import (
 	"time"
 )
 
+// version is set by the release build (-ldflags "-X main.version=...").
+var version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "vim2godot:", err)
@@ -33,12 +36,17 @@ func run() error {
 	nvim := fs.String("nvim", envOr("NVIM", "nvim"), "path to nvim (or set $NVIM)")
 	install := fs.Bool("install", false, "also copy the .tet files into Godot's text_editor_themes folder")
 	timeout := fs.Duration("timeout", 20*time.Second, "time limit for loading each scheme")
+	showVersion := fs.Bool("version", false, "print the version and exit")
 	fs.Usage = func() {
 		fmt.Fprintln(fs.Output(), "usage: vim2godot [flags] <repository>")
 		fmt.Fprintln(fs.Output(), "\nrepository: a vimcolorschemes.com page, GitHub URL, owner/name, or local directory")
 		fs.PrintDefaults()
 	}
 	fs.Parse(os.Args[1:])
+	if *showVersion {
+		fmt.Println("vim2godot", version)
+		return nil
+	}
 	if fs.NArg() != 1 {
 		fs.Usage()
 		os.Exit(2)

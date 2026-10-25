@@ -218,7 +218,8 @@ To go the other way and give Godot the colors of a Vim colorscheme, use
 [`colorscheme/`](colorscheme/README.md): a Go tool that converts any scheme
 from [vimcolorschemes.com](https://vimcolorschemes.com/) into a Godot editor
 theme (script-editor colors and interface colors). Neovim then follows that
-theme through the `godot` colorscheme.
+theme through the `godot` colorscheme. Each release has prebuilt binaries of
+it for Linux, macOS and Windows.
 
 ![cendre, converted from Vim, in the Godot script editor](docs/screenshots/colorscheme-cendre.png)
 
@@ -355,10 +356,16 @@ Bump `version` in `addons/godot_nvim/plugin.cfg`, add a section for it to
 tag:
 
 ```sh
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.3.0 && git push origin v0.3.0
 ```
 
-The Release workflow checks the tag against `plugin.cfg`, runs the tests, and
-publishes a GitHub release with `godot_nvim-<version>.zip` (the
-`addons/godot_nvim` folder), using that version's changelog section as
-the release notes.
+The Release workflow checks the tag against `plugin.cfg`, runs the addon's and
+the colorscheme tool's tests, and publishes one GitHub release, using that
+version's changelog section as the release notes. Its assets, all with the
+same version:
+
+- `godot_nvim-<version>.zip`: the `addons/godot_nvim` folder
+- `colorscheme-<version>-<os>-<arch>.tar.gz` (`.zip` for Windows): the
+  [`vim2godot`](colorscheme/README.md) colorscheme tool, for Linux, macOS and
+  Windows on amd64 and arm64
+- `SHA256SUMS.txt`: checksums of the files above
