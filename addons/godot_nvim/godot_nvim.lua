@@ -539,6 +539,8 @@ vim.api.nvim_create_user_command("GodotConnections", M.show_connections,
 -- Finding functions -----------------------------------------------------------
 -- Godot's language server has no workspace/symbol, so :GodotFunc scans the
 -- project's .gd files itself. Loaded buffers are read as they are in Neovim.
+-- The project is the folder Godot passed in, not the working directory, which
+-- :cd (or a plugin) can move.
 
 -- Returns { file, lnum, name, text } for every func in the project.
 function M.project_funcs()
@@ -549,7 +551,7 @@ function M.project_funcs()
     end
   end
   local out = {}
-  for _, f in ipairs(vim.fn.globpath(vim.fn.getcwd(), "**/*.gd", false, true)) do
+  for _, f in ipairs(vim.fn.globpath((opts.root or vim.fn.getcwd()):gsub(",", "\\,"), "**/*.gd", false, true)) do
     f = vim.fs.normalize(f)
     if not f:match("/%.godot/") then
       local lines = loaded[f] and vim.api.nvim_buf_get_lines(loaded[f], 0, -1, false) or vim.fn.readfile(f)
