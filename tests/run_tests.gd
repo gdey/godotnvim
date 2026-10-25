@@ -539,6 +539,18 @@ func _test_session() -> void:
 	var listed: Array = await _req(view, "nvim_exec_lua", ["return vim.tbl_map(function(i) return vim.fn.fnamemodify(i.name, ':t') end, vim.fn.getbufinfo({buflisted = 1}))", []])
 	check(not listed[1].has("c.gd"), "deleted file not reopened: %s" % [listed])
 
+	# A split closed after restoring stays closed: quitting from a single
+	# window must not save the spare window :q handling opens.
+	view.rpc.request("nvim_command", ["only"])
+	await _req(view, "nvim_eval", ["1"])
+	view.stop()
+	view.start()
+	await _wait(func(): return view.entered)
+	await _wait(func():
+		after.assign(view.rpc.request_sync("nvim_exec_lua", [layout_lua, []]))
+		return after[1] is Array and after[1][1] == "a.gd")
+	check(after[1] is Array and after[1][0] == [["a.gd:6"]], "closed split stays closed: %s" % [after])
+
 	# Turned off: not saved, and the old session isn't restored.
 	view.set_session_file("")
 	view.rpc.request("nvim_command", ["only"])
