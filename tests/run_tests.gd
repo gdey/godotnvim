@@ -12,6 +12,7 @@ func _init() -> void:
 	_test_keys()
 	_test_drop_text()
 	_test_overrides()
+	_test_editor_profiles()
 	await _test_embed()
 	await _test_view_drop()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
@@ -154,6 +155,30 @@ func _test_drop_text() -> void:
 	check(r["text"] == "const MyIcon = preload(\"res://art/my_icon.png\")\n", "file preload: " + r["text"])
 	check(DropText.build({"type": "obj_property"}, main, main, false, true).is_empty(), "ignores other drags")
 	main.queue_free()
+
+
+func _test_editor_profiles() -> void:
+	print("editor profiles")
+	var Profiles = load("res://addons/godot_nvim/editor_profiles.gd")
+	var dir := OS.get_cache_dir().path_join("godot_nvim_profiles")
+	DirAccess.make_dir_recursive_absolute(dir)
+	for f in DirAccess.get_files_at(dir):
+		DirAccess.remove_absolute(dir.path_join(f))
+	var read := func(name: String) -> Dictionary:
+		return JSON.parse_string(FileAccess.get_file_as_string(dir.path_join(name + ".profile")))
+	check(Profiles.create(dir) == PackedStringArray(["Default-neovim"]), "no profiles: makes Default-neovim")
+	check(read.call("Default-neovim").get("disabled_features") == ["script"], "Default-neovim hides the Script screen")
+	# Written like Godot's EditorFeatureProfile.save_to_file.
+	FileAccess.open(dir.path_join("2D.profile"), FileAccess.WRITE).store_string(JSON.stringify({"type": "feature_profile",
+		"disabled_classes": ["Node3D"], "disabled_editors": [], "disabled_properties": [], "disabled_features": ["3d"]}, "\t"))
+	FileAccess.open(dir.path_join("Full.profile"), FileAccess.WRITE).store_string(JSON.stringify({"type": "feature_profile"}))
+	DirAccess.remove_absolute(dir.path_join("Default-neovim.profile"))
+	var made: PackedStringArray = Profiles.create(dir)
+	made.sort()
+	check(made == PackedStringArray(["2D-neovim", "Full-neovim"]), "one -neovim per profile, none for -neovim ones: %s" % [made])
+	var p2d: Dictionary = read.call("2D-neovim")
+	check(p2d.get("disabled_features") == ["3d", "script"] and p2d.get("disabled_classes") == ["Node3D"], "2D-neovim keeps 2D's settings: %s" % [p2d])
+	check(Profiles.create(dir).is_empty(), "existing -neovim profiles are left alone")
 
 
 func _test_overrides() -> void:

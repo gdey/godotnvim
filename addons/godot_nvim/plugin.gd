@@ -14,6 +14,8 @@ const _NVIM_CANDIDATES := ["/opt/homebrew/bin/nvim", "/usr/local/bin/nvim", "/us
 
 const _DebuggerBridge := preload("res://addons/godot_nvim/debugger_bridge.gd")
 const _ThemeColors := preload("res://addons/godot_nvim/theme_colors.gd")
+const _EditorProfiles := preload("res://addons/godot_nvim/editor_profiles.gd")
+const _PROFILES_MENU := "Create Neovim Editor Profiles"
 ## Editor shortcuts that work while typing in Neovim.
 const _PASSTHROUGH_SHORTCUTS := ["editor/run_project", "editor/run_current_scene",
 	"editor/run_specific_scene", "editor/pause_running_project", "editor/stop_running_project"]
@@ -90,10 +92,13 @@ func _enter_tree() -> void:
 	add_child(_bp_timer)
 	_bp_timer.start()
 
+	add_tool_menu_item(_PROFILES_MENU, _create_profiles)
+
 	view.start()
 
 
 func _exit_tree() -> void:
+	remove_tool_menu_item(_PROFILES_MENU)
 	var es := EditorInterface.get_editor_settings()
 	if es.settings_changed.is_connected(_sync_theme):
 		es.settings_changed.disconnect(_sync_theme)
@@ -468,6 +473,37 @@ func _set_breakpoint(path: String, line: int, enabled: bool) -> void:
 	if neovim_in_front:
 		EditorInterface.set_main_screen_editor(_get_plugin_name())
 	_sync_breakpoints()
+
+
+## Project → Tools → Create Neovim Editor Profiles. Makes the "-neovim"
+## profiles, then offers to switch to the one for the current profile. The
+## profile manager only reads the current profile at startup, so switching
+## restarts the editor.
+func _create_profiles() -> void:
+	var made := _EditorProfiles.create(_EditorProfiles.profiles_dir())
+	var es := EditorInterface.get_editor_settings()
+	var current: String = es.get_setting("_default_feature_profile") if es.has_setting("_default_feature_profile") else ""
+	var target := current if current.ends_with(_EditorProfiles.SUFFIX) else _EditorProfiles.neovim_name(current)
+	var text := ("Created: %s." % ", ".join(made)) if not made.is_empty() else "All of your editor profiles already have a \"-neovim\" version."
+	text += "\nThey hide the Script screen; Neovim edits scripts instead."
+	var dialog: AcceptDialog
+	if current == target or not FileAccess.file_exists(_EditorProfiles.profiles_dir().path_join(target + ".profile")):
+		dialog = AcceptDialog.new()
+		text += "\nPick one under Editor → Manage Editor Features."
+	else:
+		dialog = ConfirmationDialog.new()
+		dialog.ok_button_text = "Switch and Restart"
+		dialog.cancel_button_text = "Not Now"
+		text += "\n\nSwitch to \"%s\" now? The editor restarts to apply it." % target
+		dialog.confirmed.connect(func() -> void:
+			es.set_setting("_default_feature_profile", target)
+			EditorInterface.restart_editor(true))
+	dialog.title = "Neovim Editor Profiles"
+	dialog.dialog_text = text
+	dialog.visibility_changed.connect(func() -> void:
+		if not dialog.visible:
+			dialog.queue_free())
+	EditorInterface.popup_dialog_centered(dialog)
 
 
 func _ensure_settings() -> void:
