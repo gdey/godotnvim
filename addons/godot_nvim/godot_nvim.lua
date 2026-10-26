@@ -1046,6 +1046,20 @@ local function apply_to_path(path)
   end
 end
 
+-- Opens [path] at the func called [name], for the Signals dock's "Go to
+-- Method". The buffer is searched rather than Godot's copy, so unsaved
+-- edits count.
+function M.open_method(path, name)
+  M.open(path, 0, 0)
+  local l = func_lines(0)[name]
+  if l then
+    vim.api.nvim_win_set_cursor(0, { l, 0 })
+    vim.cmd("normal! ^zz")
+  else
+    vim.notify("No func " .. name .. "() in " .. vim.fn.fnamemodify(path, ":t"), vim.log.levels.WARN)
+  end
+end
+
 function M.set_connections(path, conns)
   M.connections[path] = conns
   apply_to_path(path)

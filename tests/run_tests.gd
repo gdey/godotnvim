@@ -468,6 +468,16 @@ func _test_view_drop() -> void:
 	view.save_all()
 	check(FileAccess.get_file_as_string(path).begins_with("# edited"), "save_all wrote the buffer")
 	check(await _wait(func(): return modified.size() > 0 and modified[-1].is_empty()), "no unsaved buffers after save")
+	# The Signals dock's "Go to Method": the func is found in the buffer, so
+	# unsaved lines above it count.
+	view.rpc.request("nvim_buf_set_lines", [0, 1, 1, false, ["var a := 1", "var b := 2"]])
+	view.open_file(path, 0, 0, "_ready")
+	var cur: Array = await _req(view, "nvim_exec_lua", ["return {vim.fn.line('.'), vim.fn.getline('.'), vim.fn.search('^var b', 'nw')}", []])
+	check(cur[1][1].begins_with("func _ready") and cur[1][2] < cur[1][0], "go to method finds the func in the unsaved buffer: %s" % [cur])
+	view.open_file(path, 0, 0, "_gone")
+	var msg: Array = await _req(view, "nvim_exec_lua", ["return vim.trim(vim.fn.execute('1messages'))", []])
+	check(msg[1] == "No func _gone() in godot_nvim_test.gd", "a missing method warns: %s" % [msg])
+	view.rpc.request("nvim_command", ["silent edit!"])
 	# A clean stop removes Neovim's swap file.
 	view.rpc.request("nvim_buf_set_lines", [0, 0, 0, false, ["# unsaved"]])
 	var swap: Array = view.rpc.request_sync("nvim_eval", ["swapname('%')"])

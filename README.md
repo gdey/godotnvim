@@ -9,7 +9,7 @@ an embedded Neovim, drawn inside the editor with Neovim's UI protocol
 - the GDScript language server gives hover docs, definitions and completion;
 - debugger breakpoints show in the gutter, in sync with Godot's debugger;
 - signs mark methods that signals connect to and methods that override a base
-  class;
+  class, and the Signals dock's Go to Method opens the method in Neovim;
 - Neovim takes its colors from the script editor's theme;
 - Godot's run, pause and stop shortcuts keep working while you type.
 
@@ -249,6 +249,14 @@ cursor and the method it overrides. A connection to a method the script
 doesn't have shows up as a warning diagnostic. Signal signs follow the scene
 you're editing and update when you connect or disconnect signals in the Node
 dock; override signs update as you type, and follow `extends` when you save.
+
+In the Node dock's Signals tab, **Go to Method** (right-click a connection)
+and double-clicking a connection open the connected method in Neovim, as
+they do in Godot's script editor. The method is found in Neovim's buffer, so
+unsaved edits that moved it count. If the buffer has no such `func`, the file
+opens with a warning.
+
+![Go to Method on the Start button's pressed connection jumps to _on_start_button_pressed in Neovim](docs/screenshots/signals-go-to-method.gif)
 
 ## Colors
 

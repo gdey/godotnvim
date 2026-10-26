@@ -56,6 +56,9 @@ var _scene_keys := {}
 var _closed_scenes := PackedStringArray()
 ## [scenes, current] last sent to Neovim.
 var _sent_scenes := []
+## The Signals dock's tree and context menus, whose "Go to Method" we follow.
+var _signals_tree: Tree
+var _signals_menus: Array[PopupMenu] = []
 
 
 func _enter_tree() -> void:
@@ -135,12 +138,14 @@ func _enter_tree() -> void:
 	_bp_timer.start()
 
 	add_tool_menu_item(_PROFILES_MENU, _create_profiles)
+	_hook_signals_dock()
 
 	view.start()
 
 
 func _exit_tree() -> void:
 	remove_tool_menu_item(_PROFILES_MENU)
+	_unhook_signals_dock()
 	var es := EditorInterface.get_editor_settings()
 	if es.settings_changed.is_connected(_sync_theme):
 		es.settings_changed.disconnect(_sync_theme)
@@ -285,6 +290,80 @@ func _on_debugger_goto_line(script: Script, line: int) -> void:
 		return
 	_sync_scenes()
 	view.open_file(script.resource_path, line + 1)
+	EditorInterface.set_main_screen_editor(_get_plugin_name())
+
+
+# --- Signals dock ----------------------------------------------------------------
+
+## ConnectionsDock::SLOT_MENU_GO_TO_METHOD, the same in 4.5 to 4.7.
+const _GO_TO_METHOD := 1
+
+
+## The Signals dock's "Go to Method" (its right-click menu, or double-clicking
+## a connection) opens the method in Godot's script editor directly, without
+## _edit. Watch the dock's tree and menus and follow it into Neovim.
+func _hook_signals_dock() -> void:
+	var docks := EditorInterface.get_base_control().get_tree().root.find_children("*", "ConnectionsDock", true, false)
+	if docks.is_empty():
+		return
+	var dock: Node = docks[0]
+	# Skip the trees and menus of the dock's Connect dialog, a window of its own.
+	for t in dock.find_children("*", "Tree", true, false):
+		if t.get_window() == dock.get_window():
+			_signals_tree = t
+			break
+	if _signals_tree == null:
+		return
+	_signals_tree.item_activated.connect(_on_signals_activated)
+	for m in dock.find_children("*", "PopupMenu", true, false):
+		if m.get_parent().get_window() == dock.get_window():
+			m.id_pressed.connect(_on_signals_menu)
+			_signals_menus.append(m)
+
+
+func _unhook_signals_dock() -> void:
+	if is_instance_valid(_signals_tree) and _signals_tree.item_activated.is_connected(_on_signals_activated):
+		_signals_tree.item_activated.disconnect(_on_signals_activated)
+	for m in _signals_menus:
+		if is_instance_valid(m) and m.id_pressed.is_connected(_on_signals_menu):
+			m.id_pressed.disconnect(_on_signals_menu)
+	_signals_tree = null
+	_signals_menus.clear()
+
+
+func _on_signals_activated() -> void:
+	_go_to_connected_method(_signals_tree.get_selected())
+
+
+## The dock's class and signal menus have an id 1 too, but then the
+## selected item isn't a connection.
+func _on_signals_menu(id: int) -> void:
+	if id == _GO_TO_METHOD:
+		_go_to_connected_method(_signals_tree.get_selected())
+
+
+## [param item] is a connection when its metadata is the Dictionary of
+## Object.get_signal_connection_list(); signals and classes have other data.
+func _go_to_connected_method(item: TreeItem) -> void:
+	if item == null:
+		return
+	var meta: Variant = item.get_metadata(0)
+	if not (meta is Dictionary and meta.has("callable")):
+		return
+	var callable: Callable = meta["callable"]
+	var target := callable.get_object()
+	if target == null:
+		return
+	var script := target.get_script() as Script
+	if script == null or not _handles(script):
+		return
+	# After the dock has switched to the Script screen.
+	_open_method.call_deferred(script.resource_path, String(callable.get_method()))
+
+
+func _open_method(path: String, method: String) -> void:
+	_sync_scenes()
+	view.open_file(path, 0, 0, method)
 	EditorInterface.set_main_screen_editor(_get_plugin_name())
 
 
