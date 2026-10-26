@@ -404,17 +404,22 @@ first, so Godot registers the addon's `class_name`s.
 
 ## Releasing
 
-Bump `version` in `addons/godot_nvim/plugin.cfg`, add a section for it to
-`CHANGELOG.md`, commit, then push a matching
-tag:
+Bump `version` in `addons/godot_nvim/plugin.cfg` and add a section for it to
+`CHANGELOG.md`: a summary of at most three sentences, then Added, Removed and
+Fixed sections, with a screenshot for each major feature. Commit, then push a
+matching tag:
 
 ```sh
 git tag v0.4.0 && git push origin v0.4.0
 ```
 
 The Release workflow checks the tag against `plugin.cfg`, runs the addon's and
-the colorscheme tool's tests, and publishes one GitHub release, using that
-version's changelog section as the release notes. Its assets, all with the
+the colorscheme tool's tests, and publishes one GitHub release. Its notes,
+built by `.github/release-notes.sh`, are the version's summary, an About
+section from `docs/release/about.md`, and the version's Added, Removed and
+Fixed sections, with screenshots pinned to the tag. To rewrite an existing
+release's notes after editing them, run the Release notes workflow from the
+Actions tab with the tag. Its assets, all with the
 same version:
 
 - `godot_nvim-<version>.zip`: the `addons/godot_nvim` folder

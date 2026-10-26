@@ -85,7 +85,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Notes: this version's section of CHANGELOG.md.
-          awk -v v="$VERSION" '/^## \[/ { on = index($0, "[" v "]") > 0; next } on' CHANGELOG.md > notes.md
+          # Notes: summary, About and Changelog, from CHANGELOG.md and
+          # docs/release/about.md (see .github/release-notes.sh).
+          .github/release-notes.sh "$VERSION" "$GITHUB_REF_NAME" > notes.md
           gh release create "$GITHUB_REF_NAME" dist/* \
             --title "$GITHUB_REF_NAME" --notes-file notes.md

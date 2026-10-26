@@ -4,7 +4,15 @@ All notable changes to this plugin are listed here. Versions follow
 [Semantic Versioning](https://semver.org/); the version lives in
 `addons/godot_nvim/plugin.cfg`.
 
+Each version starts with a summary of at most three sentences, then has
+Added, Removed and Fixed sections, with a screenshot for each major feature.
+The release workflow turns a version's section into its GitHub release notes.
+
 ## [0.4.0] - 2026-10-26
+
+Each scene open in Godot now gets its own Neovim tab page, and switching
+scenes on either side switches the other. A new `start_clean` setting runs
+Neovim without your config, to rule it out when something misbehaves.
 
 ### Added
 
@@ -13,6 +21,9 @@ All notable changes to this plugin are listed here. Versions follow
   when something misbehaves. The plugin's own features, including the
   session and format on save, keep working. Changing it restarts Neovim,
   or waits for `:qa` if there are unsaved changes.
+
+  ![Neovim started clean: the message says your config and plugins were skipped](docs/screenshots/start-clean.png)
+
 - Each scene open in Godot gets its own Neovim tab page. Switching scenes in
   Godot shows that scene's tab page, and switching tab pages in Neovim
   switches Godot's scene. Opening a scene makes its tab page; closing it
@@ -20,7 +31,14 @@ All notable changes to this plugin are listed here. Versions follow
   in the current scene's tab page. The links are saved with the session.
   Editor Settings → `godot_nvim/link_scene_tabs` turns it off.
 
+  ![Switching scene tabs in Godot switches Neovim's tab page](docs/screenshots/scene-tabs.gif)
+
 ## [0.3.0] - 2026-10-25
+
+Neovim now restores your open files, splits and tabs when the project
+reopens, and Inspector properties can be dragged in as node paths.
+`:GodotRunFile` runs an `EditorScript` from Neovim, and each release now
+carries vim2godot, a tool that turns Vim colorschemes into Godot themes.
 
 ### Added
 
@@ -28,6 +46,9 @@ All notable changes to this plugin are listed here. Versions follow
   colorscheme (any on vimcolorschemes.com) into a Godot editor theme, a `.tet`
   for the script editor plus an EditorScript for the interface colors. It is
   not part of the addon download. cendre is included as an example.
+
+  ![cendre, converted from Vim, in the Godot script editor](docs/screenshots/colorscheme-cendre.png)
+
 - Releases now also carry vim2godot prebuilt for Linux, macOS and Windows
   (amd64 and arm64) as `colorscheme-<version>-<os>-<arch>` archives, with the
   addon's version number, plus `SHA256SUMS.txt`. `vim2godot -version` prints
@@ -36,13 +57,21 @@ All notable changes to this plugin are listed here. Versions follow
   as the script editor's File → Run does. Without a file it runs the current
   buffer, writing it first if it has unsaved changes. Files outside the
   project run after a confirmation.
+
+  ![:GodotRunFile runs an EditorScript; its output shows in the Output panel](docs/screenshots/run-file.png)
+
 - Dragging a property from the Inspector into Neovim inserts it with its
   node path, `$Path/To/Node.property`, or with Ctrl/Cmd held, the NodePath
   string `"Path/To/Node:property"`.
+
+  ![Dropping the Score label's Text property inserts %Score.text, and with Ctrl, "../HUD/Score:text"](docs/screenshots/inspector-drop.gif)
+
 - Open files, cursor positions, splits and tabs are saved when the editor
   closes (or Neovim quits) and restored when the project opens again. The
   session lives in `.godot/godot_nvim/session.vim`. Editor Settings →
   `godot_nvim/restore_session` turns it off.
+
+  ![The Neovim tab after reopening the project: two splits and a second tab](docs/store/session-restore.webp)
 
 ### Fixed
 
@@ -54,14 +83,24 @@ All notable changes to this plugin are listed here. Versions follow
 
 ## [0.2.0] - 2026-10-25
 
+GDScript files are now formatted on save, and `:GodotFunc` jumps to any
+function in the project by name. A new Tools menu entry makes editor
+profiles that hide Godot's Script tab, so Neovim is the only script editor.
+
 ### Added
 
 - `:GodotFunc <name>` opens a GDScript function by name from anywhere in the
   project, with name completion. Several matches, or partial ones, go to the
   quickfix list. Godot's language server has no workspace symbol search.
+
+  ![:GodotFunc with name completion](docs/store/function-search.webp)
+
 - Project → Tools → Create Neovim Editor Profiles: copies each editor feature
   profile to `<name>-neovim` with the Script screen hidden, and offers to
   switch to one. The README now recommends hiding the Script screen.
+
+  ![The main screen tabs with no profile, and with Default-neovim](docs/screenshots/profiles-main-screens.png)
+
 - GDScript formatting on save, on by default. It uses GDQuest's
   `gdscript-formatter` (including the copy its Godot add-on installs) or
   gdtoolkit's `gdformat`, whichever is found, and does nothing if neither is
@@ -69,19 +108,32 @@ All notable changes to this plugin are listed here. Versions follow
   `godot_nvim/formatter_command` picks another command. `:GodotFormat`
   formats on demand.
 
+  ![A script before and after :w with format on save](docs/screenshots/format-on-save.png)
+
 ## [0.1.0] - 2026-10-25
 
-First release.
+The first release: Neovim embedded in the Godot editor as its script editor.
+It keeps drag-and-drop, the GDScript language server, debugger breakpoints,
+signal and override signs, the editor's colors and the run shortcuts.
 
 ### Added
 
 - Neovim embedded in a main-screen tab through the UI protocol (ext_linegrid).
   GDScript, shaders and other text files open there instead of Godot's script
   editor.
+
+  ![Neovim tab with breakpoint, override and signal signs in the editor's colors](docs/screenshots/overview.png)
+
 - Drag-and-drop of scene nodes and files from the Scene and FileSystem docks.
   The inserted text matches Godot's script editor (`$Node`, `$"../Path"`,
   `%Unique`, `preload(...)`, `@onready var` with Ctrl/Cmd).
+
+  ![Ctrl-dropping two nodes inserts @onready vars](docs/screenshots/drag-and-drop.png)
+
 - The GDScript language server, connected automatically.
+
+  ![Hover docs from Godot's language server](docs/screenshots/lsp-hover.png)
+
 - Debugger breakpoints as signs. Toggle them with F9 or a double-click on the
   gutter. They sync both ways with Godot's debugger, follow its go-to-line,
   and grey out while Skip Breakpoints is on.

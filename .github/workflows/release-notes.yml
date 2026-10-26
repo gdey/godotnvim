@@ -1,0 +1,29 @@
+# Rewrites an existing release's notes from the current CHANGELOG.md and
+# docs/release/about.md, in the same format the Release workflow uses. Run it
+# from the Actions tab after editing a released version's changelog section.
+name: Release notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to rewrite, such as v0.4.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rewrite the notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          .github/release-notes.sh "${TAG#v}" "$TAG" > notes.md
+          cat notes.md
+          gh release edit "$TAG" --notes-file notes.md
