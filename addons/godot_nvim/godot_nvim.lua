@@ -7,6 +7,7 @@
 --   runtime: folder with this plugin's runtime files (colors/godot.lua)
 --   session: file to save open files and layout to when Neovim exits, and
 --         to restore them from when it starts; nil for neither
+--   clean: Neovim was started with --clean, so say so once it has started
 local chan, opts = ...
 opts = opts or {}
 local M = {}
@@ -211,6 +212,9 @@ vim.api.nvim_create_autocmd("VimEnter", {
   nested = true,
   callback = function()
     M.restore_session()
+    if opts.clean then
+      vim.notify("godot_nvim: started clean, without your config and plugins")
+    end
     vim.rpcnotify(chan, "godot_nvim_entered")
   end,
 })

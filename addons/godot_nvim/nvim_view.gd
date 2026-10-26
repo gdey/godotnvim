@@ -33,6 +33,9 @@ signal nvim_exited
 ## Where Neovim saves its open files and layout when it exits, and restores
 ## them from when it starts. Empty for neither.
 @export var session_file := ""
+## Start Neovim with --clean: without the user's config, plugins and ShaDa.
+## This plugin's own Lua still loads, as it is sent over RPC.
+@export var clean := false
 ## Start Neovim again (on the last file) if it exits on its own, e.g. :qa.
 @export var auto_restart := true
 ## Key presses matching these go to the editor instead of Neovim, so editor
@@ -88,6 +91,8 @@ func start() -> Error:
 	if rpc.is_running():
 		return OK
 	var args := PackedStringArray()
+	if clean:
+		args.append("--clean")
 	if working_dir != "":
 		# Through the environment, so no quoting rules (Windows backslashes,
 		# spaces) can mangle the path.
@@ -106,6 +111,14 @@ func stop() -> void:
 	attached = false
 	entered = false
 	rpc.stop()
+
+
+## Quits Neovim (saving the session) and starts it again on the last file,
+## e.g. to apply [member clean].
+func restart() -> void:
+	stop()
+	_restarting = true
+	start()
 
 
 ## Opens [param path] (res:// or absolute) in Neovim, at [param line] if > 0.
@@ -204,6 +217,8 @@ func _on_api_info(err: Variant, res: Variant) -> void:
 	opts["runtime"] = ProjectSettings.globalize_path(get_script().resource_path.get_base_dir().path_join("nvim"))
 	if session_file != "":
 		opts["session"] = session_file
+	if clean:
+		opts["clean"] = true
 	if lsp_port > 0:
 		opts["lsp"] = {"host": lsp_host, "port": lsp_port}
 	rpc.request("nvim_exec_lua", [src, [chan, opts]])

@@ -97,6 +97,27 @@ must be on to see it).
 
 ![Editor Settings, Godot Nvim section: Restore Session](docs/screenshots/session-settings.png)
 
+## Starting clean
+
+To check whether something odd comes from your Neovim config or a plugin of
+yours, turn on Editor Settings → `godot_nvim/start_clean` (Advanced Settings
+must be on to see it). Neovim restarts with `--clean`: no `init.lua`, no
+plugins and no ShaDa (marks, registers and history aren't read or written),
+and says "started clean" at the bottom. If there are unsaved changes it
+waits until you `:qa`, so nothing is lost.
+
+![Editor Settings, Godot Nvim section: Start Clean turned on](docs/screenshots/start-clean-settings.png)
+
+![The Neovim tab after turning Start Clean on: "godot_nvim: started clean, without your config and plugins"](docs/screenshots/start-clean.png)
+
+Everything this plugin does itself keeps working, because its Lua is sent
+to Neovim over RPC rather than loaded from your config: drag and drop,
+breakpoints, the GDScript language server, the `godot` colorscheme, format
+on save and the session. The session is shared with normal starts, so the
+files you had open come back either way, and turning the setting off again
+returns to where you were. Arguments in `godot_nvim/nvim_args` are still
+passed after `--clean`.
+
 ## Hiding the Script screen
 
 Godot still opens its own script editor alongside Neovim, so the Script tab
@@ -308,6 +329,7 @@ Editor Settings → `godot_nvim/`:
 | `format_on_save` | on | Format `.gd` files when saving, if a formatter is installed |
 | `formatter_command` | empty: `gdscript-formatter`, else `gdformat -` | The formatter command; reads stdin, prints the result |
 | `restore_session` | on | Save the open files, cursors, splits and tabs on close and restore them on open |
+| `start_clean` | off | Start Neovim with `--clean`, without your config and plugins |
 
 Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 `:GodotRunFile`, `:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
