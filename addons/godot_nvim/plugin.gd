@@ -22,6 +22,7 @@ const _NVIM_CANDIDATES := ["/opt/homebrew/bin/nvim", "/usr/local/bin/nvim", "/us
 const _DebuggerBridge := preload("res://addons/godot_nvim/debugger_bridge.gd")
 const _ThemeColors := preload("res://addons/godot_nvim/theme_colors.gd")
 const _EditorProfiles := preload("res://addons/godot_nvim/editor_profiles.gd")
+const _ExportExcluder := preload("res://addons/godot_nvim/export_excluder.gd")
 const _PROFILES_MENU := "Create Neovim Editor Profiles"
 ## Where GUI-launched editors may find formatters besides PATH.
 const _FORMATTER_DIRS := ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "~/.local/bin", "~/.cargo/bin"]
@@ -34,6 +35,7 @@ const _PASSTHROUGH_SHORTCUTS := ["editor/run_project", "editor/run_current_scene
 var view: NvimView
 var _current_path := ""
 var _debugger: EditorDebuggerPlugin
+var _export_excluder: EditorExportPlugin
 ## res:// path -> sorted 1-based breakpoint lines, as last sent to Neovim.
 var _breakpoints := {}
 var _bp_timer: Timer
@@ -62,6 +64,8 @@ var _signals_menus: Array[PopupMenu] = []
 
 
 func _enter_tree() -> void:
+	_export_excluder = _ExportExcluder.new()
+	add_export_plugin(_export_excluder)
 	_ensure_settings()
 	var es := EditorInterface.get_editor_settings()
 	view = NvimView.new()
@@ -144,6 +148,9 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	if _export_excluder:
+		remove_export_plugin(_export_excluder)
+		_export_excluder = null
 	remove_tool_menu_item(_PROFILES_MENU)
 	_unhook_signals_dock()
 	var es := EditorInterface.get_editor_settings()

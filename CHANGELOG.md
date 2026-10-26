@@ -19,6 +19,12 @@ The release workflow turns a version's section into its GitHub release notes.
 
   ![Go to Method jumps to the connected method in Neovim](docs/screenshots/signals-go-to-method.gif)
 
+### Fixed
+
+- The addon is no longer exported with your game. Its scripts were included
+  in every export, though nothing loaded them; an export plugin now skips
+  everything under `addons/godot_nvim/` while the plugin is enabled.
+
 ## [0.4.0] - 2026-10-26
 
 Each scene open in Godot now gets its own Neovim tab page, and switching

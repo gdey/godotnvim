@@ -38,5 +38,6 @@ install folder, then your `PATH`. Set another path in Editor Settings →
 
 Copy this folder to `res://addons/godot_nvim/` (the Asset Library does this
 for you), then enable **Neovim Script Editor** in Project Settings → Plugins.
+The addon is editor-only and leaves itself out of exported games.
 
 Full documentation: https://github.com/gdey/godotnvim
