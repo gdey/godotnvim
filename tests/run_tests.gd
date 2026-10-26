@@ -16,6 +16,7 @@ func _init() -> void:
 	_test_editor_profiles()
 	_test_find_executable()
 	_test_run_editor_script()
+	_test_export()
 	await _test_embed()
 	await _test_view_drop()
 	await _test_session()
@@ -266,6 +267,83 @@ func _test_run_editor_script() -> void:
 		DirAccess.remove_absolute(dir.path_join(name))
 	DirAccess.remove_absolute(dir)
 	Engine.remove_meta("godot_nvim_ran")
+
+
+func _copy_dir(from: String, to: String) -> void:
+	DirAccess.make_dir_recursive_absolute(to)
+	for f in DirAccess.get_files_at(from):
+		DirAccess.copy_absolute(from.path_join(f), to.path_join(f))
+	for d in DirAccess.get_directories_at(from):
+		_copy_dir(from.path_join(d), to.path_join(d))
+
+
+func _remove_dir(dir: String) -> void:
+	var d := DirAccess.open(dir)
+	if not d:
+		return
+	d.include_hidden = true
+	for f in d.get_files():
+		d.remove(f)
+	for sub in d.get_directories():
+		_remove_dir(dir.path_join(sub))
+	DirAccess.remove_absolute(dir)
+
+
+## Exports a small game with the addon enabled and checks the .pck has none of
+## the addon's files. A .pck-only export needs no export templates.
+func _test_export() -> void:
+	print("export")
+	var godot := OS.get_executable_path()
+	# Export plugins run sorted by name, and GDScript's would claim our scripts.
+	check(load("res://addons/godot_nvim/export_excluder.gd").NAME < "GDScript", "excluder runs before the GDScript exporter")
+	var root := OS.get_cache_dir().path_join("godot_nvim_export")
+	var game := root.path_join("game")
+	var lister := root.path_join("lister")
+	_remove_dir(root)
+	_copy_dir(ProjectSettings.globalize_path("res://addons/godot_nvim"), game.path_join("addons/godot_nvim"))
+	var files := {
+		"project.godot": "config_version=5\n[application]\nrun/main_scene=\"res://main.tscn\"\n"
+			+ "[editor_plugins]\nenabled=PackedStringArray(\"res://addons/godot_nvim/plugin.cfg\")\n",
+		"main.gd": "extends Node\n",
+		"main.tscn": "[gd_scene format=3]\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1\"]\n"
+			+ "[node name=\"Main\" type=\"Node\"]\nscript = ExtResource(\"1\")\n",
+		"export_presets.cfg": "[preset.0]\nname=\"Linux\"\nplatform=\"Linux\"\nexport_filter=\"all_resources\"\n"
+			+ "include_filter=\"\"\nexclude_filter=\"\"\nexport_path=\"\"\n[preset.0.options]\n",
+	}
+	for name in files:
+		FileAccess.open(game.path_join(name), FileAccess.WRITE).store_string(files[name])
+	# Lists every file in a .pck, from a project of its own so res:// is clean.
+	DirAccess.make_dir_recursive_absolute(lister)
+	FileAccess.open(lister.path_join("project.godot"), FileAccess.WRITE).store_string("config_version=5\n")
+	FileAccess.open(lister.path_join("list.gd"), FileAccess.WRITE).store_string("""extends SceneTree
+func _init():
+	ProjectSettings.load_resource_pack(OS.get_cmdline_user_args()[0])
+	_walk("res://")
+	quit()
+func _walk(dir):
+	var d = DirAccess.open(dir)
+	d.include_hidden = true
+	for f in d.get_files():
+		print("PCK ", dir.path_join(f))
+	for sub in d.get_directories():
+		_walk(dir.path_join(sub))
+""")
+	var pck := root.path_join("game.pck")
+	var out := []
+	# Import first, so the addon's class_names are known when it loads.
+	OS.execute(godot, ["--headless", "--path", game, "--editor", "--quit"], out, true)
+	OS.execute(godot, ["--headless", "--path", game, "--export-pack", "Linux", pck], out, true)
+	check(FileAccess.file_exists(pck), "exported a .pck")
+	out.clear()
+	OS.execute(godot, ["--headless", "--path", lister, "-s", "list.gd", "--", pck], out, true)
+	var paths := PackedStringArray()
+	for line in "".join(out).split("\n"):
+		if line.begins_with("PCK res://"):
+			paths.append(line.trim_prefix("PCK "))
+	check("res://main.gd.remap" in paths, "the game's script is exported: %d files" % paths.size())
+	var addon := Array(paths).filter(func(p): return p.begins_with("res://addons/godot_nvim/"))
+	check(addon.is_empty(), "no addon files in the .pck: %s" % [addon])
+	_remove_dir(root)
 
 
 func _wait(cond: Callable, ms := 3000) -> bool:

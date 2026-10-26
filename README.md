@@ -42,6 +42,10 @@ To use a different binary, set it in Editor Settings → `godot_nvim/nvim_path`.
 You can pass extra arguments, such as `-u NONE`, in `godot_nvim/nvim_args`.
 Neovim starts in the project folder and loads your usual config.
 
+The plugin only runs in the editor, so it leaves itself out of exported games:
+nothing under `addons/godot_nvim/` is exported, and you don't need an export
+filter for it.
+
 ## Use
 
 - Open any text file from the FileSystem dock: scripts, shaders
@@ -401,6 +405,7 @@ Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 | `nvim/colors/godot.lua` | The `godot` colorscheme (needs the colors from the editor) |
 | `debugger_bridge.gd` | EditorDebuggerPlugin: forwards the debugger's go-to-line and breakpoint events |
 | `editor_profiles.gd` | Makes the `-neovim` editor feature profiles |
+| `export_excluder.gd` | EditorExportPlugin: keeps the addon out of exported games |
 | `plugin.gd` | EditorPlugin: the main-screen tab, opening files, editor settings, breakpoint/connection/override/color sync, run actions |
 
 ## Tests
