@@ -372,6 +372,9 @@ Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
   get a tab in the script editor, and shaders may open the shader editor
   panel. The engine does this before any plugin sees the file. Edit in Neovim
   only, or the copies can drift apart.
+- Some features go through Godot's editor internals because no plugin API
+  exists yet. [docs/godot-api-wishlist.md](docs/godot-api-wishlist.md) lists
+  each one and the Godot API that would replace it.
 - Only one grid (no `ext_multigrid`). The popup menu, cmdline and messages
   are drawn by Neovim inside the grid.
 
