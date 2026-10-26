@@ -20,6 +20,7 @@ func _init() -> void:
 	await _test_view_drop()
 	await _test_session()
 	await _test_clean()
+	await _test_scene_tabs()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
 	quit(1 if _failures else 0)
 
@@ -670,3 +671,125 @@ func _test_clean() -> void:
 		OS.set_environment("XDG_CONFIG_HOME", xdg)
 	else:
 		OS.unset_environment("XDG_CONFIG_HOME")
+## Each Godot scene gets a tab page; switching either side follows.
+func _test_scene_tabs() -> void:
+	print("scene tabs")
+	var cwd := OS.get_cache_dir().path_join("godot nvim scenes")
+	DirAccess.make_dir_recursive_absolute(cwd)
+	var session := cwd.path_join(".godot/godot_nvim/session.vim")
+	DirAccess.remove_absolute(session)
+	DirAccess.remove_absolute(session.get_basename() + ".scenes.json")
+	var a := cwd.path_join("a.gd")
+	var b := cwd.path_join("b.gd")
+	for p in [a, b]:
+		FileAccess.open(p, FileAccess.WRITE).store_string("extends Node\n# %s\n" % p.get_file())
+	# Per tab: its scene (or ""), and the files of its windows. Then the
+	# current tab's number.
+	var tabs_lua := "local r = {} for _, t in ipairs(vim.api.nvim_list_tabpages()) do local ok, k = pcall(vim.api.nvim_tabpage_get_var, t, 'godot_scene') local ws = {} for _, w in ipairs(vim.api.nvim_tabpage_list_wins(t)) do table.insert(ws, vim.fn.fnamemodify(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(w)), ':t')) end table.insert(r, {ok and k or '', ws}) end return {r, vim.fn.tabpagenr()}"
+	var tabs := func(view: NvimView) -> Array:
+		var r: Array = await _req(view, "nvim_exec_lua", [tabs_lua, []])
+		return r[1] if r[1] != null else []
+	var A := "res://a.tscn"
+	var B := "res://b.tscn"
+	var C := "res://c.tscn"
+
+	var view := _session_view(session, cwd)
+	view.link_scene_tabs = true
+	var entered := []
+	view.scene_tab_entered.connect(func(k): entered.append(k))
+	view.start()
+	check(await _wait(func(): return view.attached), "scene tabs view attached")
+	# Sent before Neovim has started: held back, then applied.
+	view.sync_scenes([{"key": A}], PackedStringArray(), A)
+	view.open_file(a)
+	await _wait(func(): return view.entered)
+	var t: Array = await tabs.call(view)
+	check(t == [[[A, ["a.gd"]]], 1], "first scene takes the first tab: %s" % [t])
+	view.sync_scenes([{"key": A}, {"key": B}], PackedStringArray(), B)
+	view.open_file(b)
+	t = await tabs.call(view)
+	check(t == [[[A, ["a.gd"]], [B, ["b.gd"]]], 2], "new scene, new tab: %s" % [t])
+	# a.gd is open in A's tab, but opens here: going there would switch scenes.
+	view.open_file(a, 2)
+	t = await tabs.call(view)
+	check(t == [[[A, ["a.gd"]], [B, ["a.gd"]]], 2], "file opens in the current scene's tab: %s" % [t])
+	view.sync_scenes([{"key": A}, {"key": B}], PackedStringArray(), A)
+	t = await tabs.call(view)
+	check(t[1] == 1 and entered.is_empty(), "Godot switching scenes switches tabs, without an echo: %s %s" % [t, entered])
+	view.rpc.request("nvim_command", ["tabnext"])
+	check(await _wait(func(): return entered == [B]), "entering a scene's tab asks Godot to switch: %s" % [entered])
+	# Godot follows; nothing more is asked.
+	view.sync_scenes([{"key": A}, {"key": B}], PackedStringArray(), B)
+	await _req(view, "nvim_eval", ["1"])
+	check(entered == [B], "no echo of Godot's switch: %s" % [entered])
+	# A scene opened between them gets its tab between them too.
+	var mid := "res://mid.tscn"
+	view.sync_scenes([{"key": A}, {"key": mid}, {"key": B}], PackedStringArray(), mid)
+	t = await tabs.call(view)
+	check(t[0].map(func(x): return x[0]) == [A, mid, B] and t[1] == 2, "tabs follow Godot's scene order: %s" % [t])
+	view.sync_scenes([{"key": A}, {"key": B}], PackedStringArray([mid]), B)
+	await _req(view, "nvim_eval", ["1"])
+	# The user's own tab is left alone.
+	view.rpc.request("nvim_command", ["tabnew"])
+	view.rpc.request("nvim_command", ["tabprevious"])
+	await _req(view, "nvim_eval", ["1"])
+	view.rpc.request("nvim_command", ["tablast"])
+	await _req(view, "nvim_eval", ["1"])
+	check(entered == [B], "unlinked tabs don't switch scenes: %s" % [entered])
+	view.rpc.request("nvim_command", ["tabclose"])
+	# An unsaved scene, then saved as c.tscn: its tab follows.
+	var unsaved := "new:42"
+	view.sync_scenes([{"key": A}, {"key": B}, {"key": unsaved}], PackedStringArray(), unsaved)
+	t = await tabs.call(view)
+	check(t[0].size() == 3 and t[0][2][0] == unsaved and t[1] == 3, "unsaved scene gets a tab: %s" % [t])
+	view.sync_scenes([{"key": A}, {"key": B}, {"key": C, "prev": unsaved}], PackedStringArray(), C)
+	t = await tabs.call(view)
+	check(t[0].size() == 3 and t[0][2][0] == C and t[1] == 3, "saved scene keeps its tab: %s" % [t])
+	var line: Array = await _req(view, "nvim_eval", ["&tabline"])
+	var label: Array = await _req(view, "nvim_exec_lua", ["return godot_nvim.tabline()", []])
+	check(line[1] == "%!v:lua.godot_nvim.tabline()" and "a.tscn │ a.gd" in String(label[1]), "tab labels name the scene: %s" % [label])
+	# Closing B closes its tab; its edited buffer is kept.
+	view.rpc.request("nvim_command", ["tabnext 2"])
+	await _req(view, "nvim_eval", ["1"])
+	view.sync_scenes([{"key": A}, {"key": B}, {"key": C}], PackedStringArray(), B)
+	view.rpc.request("nvim_command", ["edit " + b.replace(" ", "\\ ")])
+	view.rpc.request("nvim_buf_set_lines", [0, 0, 0, false, ["# edited"]])
+	view.sync_scenes([{"key": A}, {"key": C}], PackedStringArray([B]), A)
+	t = await tabs.call(view)
+	check(t == [[[A, ["a.gd"]], [C, [""]]], 1], "closed scene's tab closed: %s" % [t])
+	var kept: Array = await _req(view, "nvim_exec_lua", ["local b = vim.fn.bufnr(...) return {vim.fn.buflisted(b), vim.bo[b].modified}", [b]])
+	check(kept[1] == [1, true], "its unsaved buffer is kept: %s" % [kept])
+	view.rpc.request("nvim_command", ["buffer " + b.replace(" ", "\\ ")])
+	view.rpc.request("nvim_command", ["write"])
+	# An unsaved scene that's gone was closed, even unannounced.
+	view.sync_scenes([{"key": A}, {"key": C}, {"key": "new:7"}], PackedStringArray(), "new:7")
+	view.sync_scenes([{"key": A}, {"key": C}], PackedStringArray(), C)
+	t = await tabs.call(view)
+	check(t[0].size() == 2 and t[1] == 2, "closed unsaved scene's tab closed: %s" % [t])
+	# Scenes Godot hasn't reopened yet keep their tabs.
+	view.sync_scenes([{"key": A}], PackedStringArray(), A)
+	t = await tabs.call(view)
+	check(t[0].size() == 2 and t[1] == 1, "tab kept until its scene is said closed: %s" % [t])
+	# Restart: the links come back with the session.
+	view.stop()
+	check(FileAccess.file_exists(session.get_basename() + ".scenes.json"), "scene links saved next to the session")
+	view.start()
+	await _wait(func(): return view.entered)
+	var back: Array = []
+	await _wait(func():
+		var r: Array = view.rpc.request_sync("nvim_exec_lua", [tabs_lua, []])
+		back.assign(r[1] if r[1] is Array else [])
+		return back.size() == 2 and back[0].size() == 2)
+	check(back.size() == 2 and back[0].size() == 2 and back[0][0][0] == A and back[0][1][0] == C, "scene links restored: %s" % [back])
+	view.sync_scenes([{"key": A}, {"key": C}], PackedStringArray(), C)
+	t = await tabs.call(view)
+	check(t[1] == 2, "restored tab shown for its scene: %s" % [t])
+	# Off: links dropped, tabs stay, no more requests.
+	view.set_link_scene_tabs(false)
+	view.rpc.request("nvim_command", ["tabprevious"])
+	t = await tabs.call(view)
+	line = await _req(view, "nvim_eval", ["&tabline"])
+	check(t[0].size() == 2 and t[0][0][0] == "" and t[0][1][0] == "" and line[1] == "", "turned off: tabs unlinked, tabline back: %s %s" % [t, line])
+	view.stop()
+	check(not FileAccess.file_exists(session.get_basename() + ".scenes.json"), "no scene links saved when off")
+	view.queue_free()

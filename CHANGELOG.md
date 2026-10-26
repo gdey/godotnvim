@@ -13,6 +13,12 @@ All notable changes to this plugin are listed here. Versions follow
   when something misbehaves. The plugin's own features, including the
   session and format on save, keep working. Changing it restarts Neovim,
   or waits for `:qa` if there are unsaved changes.
+- Each scene open in Godot gets its own Neovim tab page. Switching scenes in
+  Godot shows that scene's tab page, and switching tab pages in Neovim
+  switches Godot's scene. Opening a scene makes its tab page; closing it
+  closes the tab page and keeps its buffers. Scripts opened from Godot open
+  in the current scene's tab page. The links are saved with the session.
+  Editor Settings → `godot_nvim/link_scene_tabs` turns it off.
 
 ## [0.3.0] - 2026-10-25
 
