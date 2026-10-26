@@ -19,6 +19,9 @@ signal breakpoint_requested(path: String, line: int, enabled: bool)
 ## (with [param arg] a scene path, or "" to pick one), "file" (with
 ## [param arg] an EditorScript to run), "pause" or "stop".
 signal run_requested(action: String, arg: String)
+## The user entered the Neovim tab page of the scene [param key] (see
+## [method sync_scenes]).
+signal scene_tab_entered(key: String)
 signal nvim_exited
 
 @export var nvim_path := "nvim"
@@ -36,6 +39,9 @@ signal nvim_exited
 ## Start Neovim with --clean: without the user's config, plugins and ShaDa.
 ## This plugin's own Lua still loads, as it is sent over RPC.
 @export var clean := false
+## Give each scene open in Godot its own Neovim tab page; see
+## [method sync_scenes].
+@export var link_scene_tabs := false
 ## Start Neovim again (on the last file) if it exits on its own, e.g. :qa.
 @export var auto_restart := true
 ## Key presses matching these go to the editor instead of Neovim, so editor
@@ -62,6 +68,8 @@ var _last_file := ""
 var _restarting := false
 ## [path, line, column] asked for before [member entered].
 var _pending_open := []
+## [scenes, closed, current] given to sync_scenes before [member entered].
+var _pending_scenes := []
 var _last_mouse_cell := Vector2i(-1, -1)
 
 
@@ -110,6 +118,7 @@ func start() -> Error:
 func stop() -> void:
 	attached = false
 	entered = false
+	_pending_scenes = []
 	rpc.stop()
 
 
@@ -131,10 +140,7 @@ func open_file(path: String, line := 0, column := 0) -> void:
 	if not entered:
 		_pending_open = [abs_path, line, column]
 		return
-	rpc.request("nvim_exec_lua", [
-		"local p, l, c = ... vim.cmd.drop(vim.fn.fnameescape(vim.fn.fnamemodify(p, ':~:.')))" +
-		" if l > 0 then pcall(vim.api.nvim_win_set_cursor, 0, {l, math.max(c - 1, 0)}) vim.cmd('normal! zz') end",
-		[abs_path, line, column]])
+	rpc.request("nvim_exec_lua", ["godot_nvim.open(...)", [abs_path, line, column]])
 
 
 ## Writes every modified buffer, waiting for Neovim to finish.
@@ -149,6 +155,37 @@ func set_session_file(path: String) -> void:
 	session_file = path
 	if attached:
 		rpc.request("nvim_exec_lua", ["godot_nvim.session = ...", [path if path != "" else null]])
+
+
+## Turns [member link_scene_tabs] on or off while Neovim runs.
+func set_link_scene_tabs(on: bool) -> void:
+	link_scene_tabs = on
+	if attached:
+		rpc.request("nvim_exec_lua", ["godot_nvim.set_scene_tabs(...)", [on]])
+
+
+## Tells Neovim which scenes Godot has open, so it shows [param current]'s
+## tab page, making one when needed. [param scenes]: Dictionaries in tab
+## order with "key" (the scene's res:// path, or "new:<id>" while unsaved)
+## and "prev" when the key changed since the last call. [param closed]: keys
+## of scenes closed since then; their tab pages close. Held back until
+## Neovim has restored its session.
+func sync_scenes(scenes: Array, closed: PackedStringArray, current: Variant) -> void:
+	if not attached:
+		return
+	if not entered:
+		var all := closed
+		if not _pending_scenes.is_empty():
+			all = _pending_scenes[1] + closed
+		_pending_scenes = [scenes, all, current]
+		return
+	rpc.request("nvim_exec_lua", ["godot_nvim.sync_scenes(...)", [scenes, closed, current]])
+
+
+## Drops the link between [param key]'s scene and its Neovim tab page.
+func unlink_scene(key: String) -> void:
+	if attached:
+		rpc.request("nvim_exec_lua", ["godot_nvim.unlink_scene(...)", [key]])
 
 
 ## Marks methods in [param path]'s buffer that scene signals connect to.
@@ -219,6 +256,7 @@ func _on_api_info(err: Variant, res: Variant) -> void:
 		opts["session"] = session_file
 	if clean:
 		opts["clean"] = true
+	opts["scene_tabs"] = link_scene_tabs
 	if lsp_port > 0:
 		opts["lsp"] = {"host": lsp_host, "port": lsp_port}
 	rpc.request("nvim_exec_lua", [src, [chan, opts]])
@@ -249,10 +287,17 @@ func _on_notification(method: String, params: Array) -> void:
 			run_requested.emit(params[0], ProjectSettings.localize_path(arg) if arg != "" else "")
 		"godot_nvim_entered":
 			entered = true
+			# Scenes first, so the file opens in its scene's tab.
+			if not _pending_scenes.is_empty():
+				var s: Array = _pending_scenes
+				_pending_scenes = []
+				sync_scenes(s[0], s[1], s[2])
 			if not _pending_open.is_empty():
 				var p: Array = _pending_open
 				_pending_open = []
 				open_file(p[0], p[1], p[2])
+		"godot_nvim_scene_tab":
+			scene_tab_entered.emit(params[0])
 		"godot_nvim_buf_enter":
 			if params[0] != "":
 				_last_file = params[0]

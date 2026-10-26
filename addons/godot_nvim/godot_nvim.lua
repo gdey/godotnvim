@@ -8,6 +8,7 @@
 --   session: file to save open files and layout to when Neovim exits, and
 --         to restore them from when it starts; nil for neither
 --   clean: Neovim was started with --clean, so say so once it has started
+--   scene_tabs: give each scene open in Godot its own tab page
 local chan, opts = ...
 opts = opts or {}
 local M = {}
@@ -122,6 +123,261 @@ vim.api.nvim_create_autocmd("QuitPre", {
   end,
 })
 
+-- Scene tabs -------------------------------------------------------------------
+-- With godot_nvim/link_scene_tabs on, each scene open in Godot gets its own
+-- tab page, marked with t:godot_scene: the scene's res:// path, or
+-- "new:<id>" while it is unsaved. Godot sends its open scenes with
+-- sync_scenes whenever its scene tabs change, and we show the current one's
+-- tab; entering a marked tab here asks Godot to switch to its scene. Tabs
+-- without a mark are the user's own and left alone.
+
+M.scene_tabs = opts.scene_tabs or false
+-- The scene Godot edits, as last sent or asked for.
+M.current_scene = nil
+-- Set while we change tabs ourselves, so TabEnter doesn't echo it to Godot.
+local switching = false
+-- Whether we set 'tabline' (to M.tabline()), so turning off can undo it.
+local own_tabline = false
+
+local function scene_of(tab)
+  local ok, key = pcall(vim.api.nvim_tabpage_get_var, tab, "godot_scene")
+  return ok and key or nil
+end
+
+local function scene_tab(key)
+  for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+    if scene_of(tab) == key then
+      return tab
+    end
+  end
+end
+
+local function quietly(fn, ...)
+  switching = true
+  local ok, err = pcall(fn, ...)
+  switching = false
+  if not ok then
+    vim.notify("godot_nvim: " .. tostring(err), vim.log.levels.WARN)
+  end
+end
+
+local function any_scene_tab()
+  for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+    if scene_of(tab) then
+      return true
+    end
+  end
+  return false
+end
+
+-- Closes a closed scene's tab. Its buffers stay listed, hidden when they
+-- have unsaved changes. The last tab page can't close, so it only loses
+-- its mark.
+local function close_scene_tab(tab)
+  if #vim.api.nvim_list_tabpages() == 1 then
+    vim.api.nvim_tabpage_del_var(tab, "godot_scene")
+    return
+  end
+  quietly(vim.cmd, "tabclose! " .. vim.api.nvim_tabpage_get_number(tab))
+end
+
+-- Where a new tab for [key] goes so scene tabs keep Godot's order: after
+-- the tab of the nearest scene before it in [order], else before the tab of
+-- the nearest one after it, else last. As a count for :tabnew.
+local function new_tab_position(key, order)
+  local at
+  for i, k in ipairs(order) do
+    if k == key then
+      at = i
+      break
+    end
+  end
+  if at then
+    for i = at - 1, 1, -1 do
+      local tab = scene_tab(order[i])
+      if tab then
+        return vim.api.nvim_tabpage_get_number(tab)
+      end
+    end
+    for i = at + 1, #order do
+      local tab = scene_tab(order[i])
+      if tab then
+        return vim.api.nvim_tabpage_get_number(tab) - 1
+      end
+    end
+  end
+  return "$"
+end
+
+local function show_scene(key, order)
+  local tab = scene_tab(key)
+  if not tab then
+    if any_scene_tab() then
+      local pos = new_tab_position(key, order)
+      quietly(function()
+        vim.cmd(pos .. "tabnew")
+        -- The empty buffer goes away once a file replaces it.
+        vim.bo.bufhidden = "wipe"
+      end)
+      tab = vim.api.nvim_get_current_tabpage()
+    else
+      -- The first scene takes the tab that's already there.
+      tab = vim.api.nvim_get_current_tabpage()
+    end
+    vim.api.nvim_tabpage_set_var(tab, "godot_scene", key)
+  end
+  if tab ~= vim.api.nvim_get_current_tabpage() then
+    quietly(vim.api.nvim_set_current_tabpage, tab)
+  end
+  vim.cmd.redrawtabline()
+end
+
+-- [scenes]: Godot's open scenes in tab order, as { key = ..., prev = ... };
+-- prev is the key the scene had before, when it was saved to a new path.
+-- [closed]: keys of scenes Godot closed since the last call. [current]: the
+-- key of the scene Godot edits, or nil.
+--
+-- Only scenes Godot says it closed lose their tab (and unsaved ones, which
+-- can't come back): at startup Godot reopens its scenes one by one, and a
+-- restored tab must not close before its scene is back.
+function M.sync_scenes(scenes, closed, current)
+  if not M.scene_tabs then
+    return
+  end
+  local open, order = {}, {}
+  for _, s in ipairs(scenes) do
+    table.insert(order, s.key)
+    if s.prev then
+      local tab = scene_tab(s.prev)
+      if tab and not scene_tab(s.key) then
+        vim.api.nvim_tabpage_set_var(tab, "godot_scene", s.key)
+      end
+    end
+    open[s.key] = true
+  end
+  local gone = {}
+  for _, k in ipairs(closed or {}) do
+    gone[k] = true
+  end
+  for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+    local key = scene_of(tab)
+    if key and not open[key] and (gone[key] or vim.startswith(key, "new:")) then
+      close_scene_tab(tab)
+    end
+  end
+  M.current_scene = current ~= vim.NIL and current or nil
+  if M.current_scene then
+    show_scene(M.current_scene, order)
+  end
+end
+
+-- Godot has no scene [key] open (any more): unmark its tab.
+function M.unlink_scene(key)
+  local tab = scene_tab(key)
+  if tab then
+    vim.api.nvim_tabpage_del_var(tab, "godot_scene")
+    vim.cmd.redrawtabline()
+  end
+end
+
+vim.api.nvim_create_autocmd("TabEnter", {
+  group = group,
+  callback = function()
+    if switching or not M.scene_tabs then
+      return
+    end
+    local key = scene_of(0)
+    if key and key ~= M.current_scene then
+      M.current_scene = key
+      vim.rpcnotify(chan, "godot_nvim_scene_tab", key)
+    end
+  end,
+})
+
+-- Tab labels: the scene's file name, then the current window's file.
+function M.tabline()
+  local out = {}
+  local cur = vim.api.nvim_get_current_tabpage()
+  for i, tab in ipairs(vim.api.nvim_list_tabpages()) do
+    local win = vim.api.nvim_tabpage_get_win(tab)
+    local buf = vim.api.nvim_win_get_buf(win)
+    local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t")
+    if name == "" then
+      name = vim.bo[buf].buftype == "" and "[No Name]" or vim.bo[buf].filetype
+    end
+    local modified = false
+    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+      modified = modified or vim.bo[vim.api.nvim_win_get_buf(w)].modified
+    end
+    local key = scene_of(tab)
+    local label = name .. (modified and " +" or "")
+    if key then
+      local scene = vim.startswith(key, "new:") and "[unsaved]" or vim.fn.fnamemodify(key, ":t")
+      label = scene .. " │ " .. label
+    end
+    table.insert(out, (tab == cur and "%#TabLineSel#" or "%#TabLine#") .. "%" .. i .. "T "
+      .. label:gsub("%%", "%%%%") .. " ")
+  end
+  return table.concat(out) .. "%#TabLineFill#%T"
+end
+
+local function update_tabline()
+  if M.scene_tabs and vim.o.tabline == "" then
+    vim.o.tabline = "%!v:lua.godot_nvim.tabline()"
+    own_tabline = true
+  elseif not M.scene_tabs and own_tabline then
+    vim.o.tabline = ""
+    own_tabline = false
+  end
+end
+-- After the user's config, which may set its own.
+vim.api.nvim_create_autocmd("VimEnter", { group = group, once = true, callback = update_tabline })
+
+function M.set_scene_tabs(on)
+  M.scene_tabs = on
+  if not on then
+    for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+      pcall(vim.api.nvim_tabpage_del_var, tab, "godot_scene")
+    end
+    M.current_scene = nil
+  end
+  if vim.v.vim_did_enter == 1 then
+    update_tabline()
+  end
+end
+
+-- Opens [path] for Godot, at [line] (1-based) when > 0. Like :drop, but with
+-- scene tabs on a window showing the file is only looked for in this tab:
+-- going to another scene's tab would switch Godot's scene.
+function M.open(path, line, col)
+  local name = vim.fn.fnameescape(vim.fn.fnamemodify(path, ":~:."))
+  if not M.scene_tabs then
+    vim.cmd.drop(name)
+  else
+    local target = vim.fs.normalize(path)
+    local found
+    for _, w in ipairs(normal_wins()) do
+      if bufname(vim.api.nvim_win_get_buf(w)) == target then
+        found = w
+        break
+      end
+    end
+    if found then
+      vim.api.nvim_set_current_win(found)
+    else
+      -- As :drop does, split when the current buffer can't be abandoned.
+      local cur = vim.api.nvim_get_current_buf()
+      local keep = vim.bo[cur].modified and not vim.o.hidden and vim.bo[cur].bufhidden == ""
+        and #vim.fn.win_findbuf(cur) == 1
+      vim.cmd((keep and "split " or "edit ") .. name)
+    end
+  end
+  if line > 0 then
+    pcall(vim.api.nvim_win_set_cursor, 0, { line, math.max(col - 1, 0) })
+    vim.cmd("normal! zz")
+  end
+end
+
 -- Session --------------------------------------------------------------------
 -- Open files, cursors, splits and tabs are saved with :mksession when Neovim
 -- exits (Godot closing, or :qa) and restored once the user's config has run.
@@ -132,6 +388,53 @@ vim.api.nvim_create_autocmd("QuitPre", {
 M.session = opts.session
 local session_options = "buffers,folds,help,tabpages,winsize"
 local restored_options = { "showtabline", "hlsearch", "winheight", "winwidth", "winminheight", "winminwidth" }
+
+-- :mksession doesn't keep tab variables, so the scene of each tab page
+-- (t:godot_scene, see Scene tabs) goes in a file next to the session.
+local function scenes_file(file)
+  return vim.fn.fnamemodify(file, ":r") .. ".scenes.json"
+end
+
+local function save_scene_tabs(file)
+  local scenes = {}
+  local any = false
+  for i, tab in ipairs(vim.api.nvim_list_tabpages()) do
+    local key = scene_of(tab)
+    -- Unsaved scenes don't outlive the editor.
+    if key and not vim.startswith(key, "new:") then
+      scenes[i] = key
+      any = true
+    else
+      scenes[i] = vim.NIL
+    end
+  end
+  if not (any and M.scene_tabs) then
+    os.remove(scenes_file(file))
+    return
+  end
+  local f = io.open(scenes_file(file), "w")
+  if f then
+    f:write(vim.json.encode(scenes))
+    f:close()
+  end
+end
+
+local function restore_scene_tabs(file)
+  local f = io.open(scenes_file(file), "r")
+  if not f then
+    return
+  end
+  local ok, scenes = pcall(vim.json.decode, f:read("*a"))
+  f:close()
+  if not ok or type(scenes) ~= "table" then
+    return
+  end
+  for i, tab in ipairs(vim.api.nvim_list_tabpages()) do
+    if type(scenes[i]) == "string" then
+      vim.api.nvim_tabpage_set_var(tab, "godot_scene", scenes[i])
+    end
+  end
+end
 
 -- Writes the session, or removes it when no file is open.
 function M.save_session()
@@ -148,6 +451,7 @@ function M.save_session()
   end
   if not any then
     os.remove(file)
+    os.remove(scenes_file(file))
     return
   end
   -- Leave out the window QuitPre opened for :qa.
@@ -162,6 +466,7 @@ function M.save_session()
   if not ok then
     vim.notify("godot_nvim: could not save the session: " .. err, vim.log.levels.WARN)
   end
+  save_scene_tabs(file)
 end
 
 -- Restores the session.
@@ -182,6 +487,8 @@ function M.restore_session()
   if not ok then
     vim.notify("godot_nvim: could not restore the session: " .. err, vim.log.levels.WARN)
   end
+  -- Before closing deleted files' windows, which can close their tabs.
+  restore_scene_tabs(file)
   -- Show the absolute paths relative to the working directory again.
   vim.cmd("noautocmd silent cd .")
   -- Files deleted since would come back as empty new files.

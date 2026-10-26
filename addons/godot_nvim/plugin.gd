@@ -10,6 +10,7 @@ const SETTING_FORMAT := "godot_nvim/format_on_save"
 const SETTING_FORMATTER := "godot_nvim/formatter_command"
 const SETTING_SESSION := "godot_nvim/restore_session"
 const SETTING_CLEAN := "godot_nvim/start_clean"
+const SETTING_SCENE_TABS := "godot_nvim/link_scene_tabs"
 ## Per project, and kept out of version control with the rest of .godot/.
 const _SESSION_FILE := "res://.godot/godot_nvim/session.vim"
 
@@ -49,6 +50,12 @@ var _unsaved := PackedStringArray()
 var _sent_theme := {}
 ## Formatter settings last sent to Neovim.
 var _sent_formatter := []
+## Scene root instance id -> its key (see _scene_key), as last sent.
+var _scene_keys := {}
+## Paths of scenes closed since the last _sync_scenes.
+var _closed_scenes := PackedStringArray()
+## [scenes, current] last sent to Neovim.
+var _sent_scenes := []
 
 
 func _enter_tree() -> void:
@@ -61,6 +68,7 @@ func _enter_tree() -> void:
 	view.working_dir = ProjectSettings.globalize_path("res://")
 	view.session_file = _session_file()
 	view.clean = es.get_setting(SETTING_CLEAN)
+	view.link_scene_tabs = es.get_setting(SETTING_SCENE_TABS)
 	if es.get_setting(SETTING_LSP):
 		view.lsp_host = es.get_setting("network/language_server/remote_host")
 		view.lsp_port = es.get_setting("network/language_server/remote_port")
@@ -75,7 +83,14 @@ func _enter_tree() -> void:
 		_current_path = p
 		_sync_overrides(p)
 		_sync_connections(true))
-	scene_changed.connect(func(_root: Node) -> void: _sync_connections(true))
+	scene_changed.connect(func(_root: Node) -> void:
+		_sync_connections(true)
+		_sync_scenes.call_deferred())
+	scene_closed.connect(func(path: String) -> void:
+		if path != "":
+			_closed_scenes.append(path)
+		_sync_scenes.call_deferred())
+	view.scene_tab_entered.connect(_show_scene)
 	view.breakpoint_requested.connect(_set_breakpoint)
 	view.modified_changed.connect(func(paths: PackedStringArray) -> void: _unsaved = paths)
 	view.run_requested.connect(_run)
@@ -91,10 +106,12 @@ func _enter_tree() -> void:
 	view.attached_to_nvim.connect(_sync_breakpoints.bind(true))
 	view.attached_to_nvim.connect(_sync_theme.bind(true))
 	view.attached_to_nvim.connect(_sync_formatter.bind(true))
+	view.attached_to_nvim.connect(_sync_scenes.bind(true))
 	es.settings_changed.connect(_sync_theme)
 	es.settings_changed.connect(_sync_formatter)
 	es.settings_changed.connect(_sync_session)
 	es.settings_changed.connect(_sync_clean)
+	es.settings_changed.connect(_sync_scene_tabs_setting)
 	# Picking a text editor theme sets its colors only when the editor theme
 	# is rebuilt, after settings_changed and without another one.
 	view.theme_changed.connect(_sync_theme)
@@ -112,6 +129,8 @@ func _enter_tree() -> void:
 	_bp_timer.wait_time = 0.5
 	_bp_timer.timeout.connect(_sync_breakpoints)
 	_bp_timer.timeout.connect(_sync_connections)
+	# Saving a scene under a new path or reordering tabs raises nothing.
+	_bp_timer.timeout.connect(_sync_scenes)
 	add_child(_bp_timer)
 	_bp_timer.start()
 
@@ -131,6 +150,8 @@ func _exit_tree() -> void:
 		es.settings_changed.disconnect(_sync_session)
 	if es.settings_changed.is_connected(_sync_clean):
 		es.settings_changed.disconnect(_sync_clean)
+	if es.settings_changed.is_connected(_sync_scene_tabs_setting):
+		es.settings_changed.disconnect(_sync_scene_tabs_setting)
 	if _debugger:
 		remove_debugger_plugin(_debugger)
 		_debugger = null
@@ -196,6 +217,9 @@ func _handles(object: Object) -> bool:
 
 func _edit(object: Object) -> void:
 	if _handles(object) and not _driving_script_editor:
+		# Switching scenes can hand us the scene's script before
+		# scene_changed's sync has run; open it in the new scene's tab.
+		_sync_scenes()
 		view.open_file(object.resource_path)
 
 
@@ -259,6 +283,7 @@ func _keep_focus() -> void:
 func _on_debugger_goto_line(script: Script, line: int) -> void:
 	if _driving_script_editor or script == null or not _handles(script):
 		return
+	_sync_scenes()
 	view.open_file(script.resource_path, line + 1)
 	EditorInterface.set_main_screen_editor(_get_plugin_name())
 
@@ -398,6 +423,73 @@ func _sync_clean() -> void:
 		view.restart()
 	else:
 		view.notify("godot_nvim: Start Clean applies when Neovim restarts. Save, then :qa", 3)
+# --- Scene tabs --------------------------------------------------------------
+
+## How Neovim knows a scene: its path, or its root's id while it has none.
+static func _scene_key(root: Node) -> String:
+	return root.scene_file_path if root.scene_file_path != "" else "new:%d" % root.get_instance_id()
+
+
+## Sends the open scenes to Neovim when they changed, a scene closed, or
+## [param force]; Neovim shows the edited scene's tab page.
+func _sync_scenes(force := false) -> void:
+	if view == null or not view.link_scene_tabs:
+		_closed_scenes = PackedStringArray()
+		return
+	if not view.attached:
+		return
+	var scenes := []
+	var keys := {}
+	for root in EditorInterface.get_open_scene_roots():
+		var key := _scene_key(root)
+		var entry := {"key": key}
+		var prev: String = _scene_keys.get(root.get_instance_id(), key)
+		if prev != key:
+			entry["prev"] = prev
+		scenes.append(entry)
+		keys[root.get_instance_id()] = key
+	_scene_keys = keys
+	var edited := EditorInterface.get_edited_scene_root()
+	var current: Variant = _scene_key(edited) if edited else null
+	if force or not _closed_scenes.is_empty() or [scenes, current] != _sent_scenes:
+		_sent_scenes = [scenes, current]
+		view.sync_scenes(scenes, _closed_scenes, current)
+		_closed_scenes = PackedStringArray()
+
+
+## The user entered scene [param key]'s tab page in Neovim: switch to it.
+func _show_scene(key: String) -> void:
+	var roots := EditorInterface.get_open_scene_roots()
+	for i in roots.size():
+		if _scene_key(roots[i]) != key:
+			continue
+		if roots[i] == EditorInterface.get_edited_scene_root():
+			return
+		if roots[i].scene_file_path != "":
+			# Switches to the scene's tab when it is open.
+			EditorInterface.open_scene_from_path(roots[i].scene_file_path)
+		else:
+			var tabs := _scene_tab_bar()
+			if tabs and i < tabs.tab_count:
+				tabs.current_tab = i
+		return
+	# Closed while Neovim wasn't looking, e.g. before a restart.
+	view.unlink_scene(key)
+
+
+## The tab bar above the main screen, with one tab per open scene.
+static func _scene_tab_bar() -> TabBar:
+	for st in EditorInterface.get_base_control().find_children("*", "EditorSceneTabs", true, false):
+		for tb in st.find_children("*", "TabBar", true, false):
+			return tb
+	return null
+
+
+func _sync_scene_tabs_setting() -> void:
+	var on: bool = EditorInterface.get_editor_settings().get_setting(SETTING_SCENE_TABS)
+	if view and on != view.link_scene_tabs:
+		view.set_link_scene_tabs(on)
+		_sync_scenes(true)
 
 
 # --- Colors ------------------------------------------------------------------
@@ -719,3 +811,7 @@ func _ensure_settings() -> void:
 		es.set_setting(SETTING_CLEAN, false)
 	es.set_initial_value(SETTING_CLEAN, false, false)
 	es.add_property_info({"name": SETTING_CLEAN, "type": TYPE_BOOL})
+	if not es.has_setting(SETTING_SCENE_TABS):
+		es.set_setting(SETTING_SCENE_TABS, true)
+	es.set_initial_value(SETTING_SCENE_TABS, true, false)
+	es.add_property_info({"name": SETTING_SCENE_TABS, "type": TYPE_BOOL})

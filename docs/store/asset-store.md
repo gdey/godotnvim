@@ -102,6 +102,11 @@ usual.
 - Open files, cursor positions, splits and tabs are saved when the editor
   closes and come back when the project reopens.
 
+**Scene tabs**
+
+- Each open scene gets its own Neovim tab page. Switching scenes in Godot
+  switches tab pages, and switching tab pages in Neovim switches the scene.
+
 **Editor profiles**
 
 - Project → Tools → Create Neovim Editor Profiles makes copies of your editor
@@ -146,6 +151,7 @@ Editor Settings → `godot_nvim/` (some need Advanced Settings on):
 | `format_on_save` | on | Format `.gd` files when saving, if a formatter is installed |
 | `formatter_command` | empty: `gdscript-formatter`, else `gdformat -` | The formatter command; reads stdin, prints the result |
 | `restore_session` | on | Save the open files, cursors, splits and tabs on close and restore them on open |
+| `link_scene_tabs` | on | Give each open scene its own Neovim tab page, and switch them together |
 
 From your Neovim config:
 
@@ -243,4 +249,5 @@ only the Neovim tab (a `-neovim` editor profile).
 - Featured image: `featured-1920x1080.webp`
 - Screenshots: `overview.webp`, `drag-and-drop.webp`, `lsp-hover.webp`,
   `function-search.webp`, `format-on-save.webp`, `editor-profiles.webp`,
-  `inspector-drop.webp`, `run-file.webp`, `session-restore.webp`
+  `inspector-drop.webp`, `run-file.webp`, `session-restore.webp`,
+  `scene-tabs.webp`

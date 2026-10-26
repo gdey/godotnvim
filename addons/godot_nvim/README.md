@@ -20,6 +20,8 @@ inside the Godot editor with Neovim's UI protocol.
   gdtoolkit's `gdformat`, whichever is installed (`:GodotFormat` on demand).
 - Open files, cursors, splits and tabs are saved when the editor closes and
   restored when the project opens again.
+- Each open scene gets its own Neovim tab page. Switching scenes in Godot
+  switches tab pages, and `gt` in Neovim switches Godot's scene.
 - Neovim uses the script editor's colors and follows theme changes.
 - Godot's run, pause and stop shortcuts work while typing, and as
   `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`, `:GodotPause`, `:GodotStop`.

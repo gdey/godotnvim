@@ -118,6 +118,34 @@ files you had open come back either way, and turning the setting off again
 returns to where you were. Arguments in `godot_nvim/nvim_args` are still
 passed after `--clean`.
 
+## Scene tabs
+
+Each scene open in Godot's scene tabs gets its own Neovim tab page. Switching
+scenes in Godot shows that scene's tab page, and switching tab pages in
+Neovim (`gt`, `:tabnext`, a click on the tabline) switches Godot's scene. A
+script opened from the Scene dock or the Inspector opens in the current
+scene's tab page, even when another scene's tab already shows it, since
+jumping there would switch scenes.
+
+![Switching from main to player in Godot's scene tabs, then gt in Neovim to hud](docs/screenshots/scene-tabs.gif)
+
+- Opening a scene makes its tab page, in the same order as Godot's tabs. The
+  first scene takes the tab page Neovim already has.
+- Closing a scene closes its tab page. Its buffers stay open, and ones with
+  unsaved changes are kept hidden; `:ls` lists them.
+- A scene saved under a new name (Save Scene As, or a new scene's first save)
+  keeps its tab page.
+- Tab pages you make yourself aren't tied to a scene and are left alone.
+  Closing a scene's tab page in Neovim doesn't close the scene; switching to
+  the scene again makes a new one.
+- Which tab page belongs to which scene is saved with the session, in
+  `.godot/godot_nvim/session.scenes.json`.
+- If your config doesn't set `'tabline'`, tab labels show the scene and the
+  file, such as `player.tscn │ player.gd`. A custom tabline can read the
+  scene's path from `t:godot_scene`.
+
+To turn this off, clear Editor Settings → `godot_nvim/link_scene_tabs`.
+
 ## Hiding the Script screen
 
 Godot still opens its own script editor alongside Neovim, so the Script tab
@@ -330,6 +358,7 @@ Editor Settings → `godot_nvim/`:
 | `formatter_command` | empty: `gdscript-formatter`, else `gdformat -` | The formatter command; reads stdin, prints the result |
 | `restore_session` | on | Save the open files, cursors, splits and tabs on close and restore them on open |
 | `start_clean` | off | Start Neovim with `--clean`, without your config and plugins |
+| `link_scene_tabs` | on | Give each open scene its own Neovim tab page, and switch them together |
 
 Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 `:GodotRunFile`, `:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
