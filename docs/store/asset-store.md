@@ -11,7 +11,7 @@ godotnvim
 
 # Asset Summary (max 500)
 
-Godot Neovim replaces Godot's script editor with an embedded Neovim, keeping drag-and-drop, LSP, breakpoints, signal icons, editor colors and run shortcuts, and adds format on save, project-wide function search, session restore and a Neovim tab page per open scene.
+Godot Neovim replaces Godot's script editor with an embedded Neovim, keeping drag-and-drop, LSP, breakpoints, signal icons and Go to Method, editor colors and run shortcuts, and adds format on save, project-wide function search, session restore and a Neovim tab page per open scene.
 
 # Detailed Description (max 20000)
 
@@ -71,6 +71,8 @@ usual.
 - `:GodotConnections` lists the signals and the overridden method for the
   function under the cursor. A connection to a missing method shows as a
   warning.
+- **Go to Method** in the Signals dock, or double-clicking a connection,
+  opens the connected method in Neovim, even when unsaved edits moved it.
 
 **Running**
 
@@ -251,4 +253,4 @@ only the Neovim tab (a `-neovim` editor profile).
 - Screenshots: `overview.webp`, `drag-and-drop.webp`, `lsp-hover.webp`,
   `function-search.webp`, `format-on-save.webp`, `editor-profiles.webp`,
   `inspector-drop.webp`, `run-file.webp`, `session-restore.webp`,
-  `scene-tabs.webp`
+  `scene-tabs.webp`, `signals-go-to-method.webp`

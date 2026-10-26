@@ -8,6 +8,17 @@ Each version starts with a summary of at most three sentences, then has
 Added, Removed and Fixed sections, with a screenshot for each major feature.
 The release workflow turns a version's section into its GitHub release notes.
 
+## [Unreleased]
+
+### Added
+
+- The Signals dock's **Go to Method** (right-click a connection) and
+  double-clicking a connection open the connected method in Neovim, where
+  they used to open Godot's script editor. The method is found in Neovim's
+  buffer, so unsaved edits that moved it count.
+
+  ![Go to Method jumps to the connected method in Neovim](docs/screenshots/signals-go-to-method.gif)
+
 ## [0.4.0] - 2026-10-26
 
 Each scene open in Godot now gets its own Neovim tab page, and switching

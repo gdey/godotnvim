@@ -66,7 +66,7 @@ var _mouse_button := ""
 ## Last file shown, reopened after a restart.
 var _last_file := ""
 var _restarting := false
-## [path, line, column] asked for before [member entered].
+## [path, line, column, method] asked for before [member entered].
 var _pending_open := []
 ## [scenes, closed, current] given to sync_scenes before [member entered].
 var _pending_scenes := []
@@ -131,16 +131,21 @@ func restart() -> void:
 
 
 ## Opens [param path] (res:// or absolute) in Neovim, at [param line] if > 0.
-func open_file(path: String, line := 0, column := 0) -> void:
+## With a [param method], at the func of that name instead, as Neovim's buffer
+## has it.
+func open_file(path: String, line := 0, column := 0, method := "") -> void:
 	if not rpc.is_running():
 		start()
 	var abs_path := ProjectSettings.globalize_path(path)
 	_last_file = abs_path
 	grab_focus()
 	if not entered:
-		_pending_open = [abs_path, line, column]
+		_pending_open = [abs_path, line, column, method]
 		return
-	rpc.request("nvim_exec_lua", ["godot_nvim.open(...)", [abs_path, line, column]])
+	if method != "":
+		rpc.request("nvim_exec_lua", ["godot_nvim.open_method(...)", [abs_path, method]])
+	else:
+		rpc.request("nvim_exec_lua", ["godot_nvim.open(...)", [abs_path, line, column]])
 
 
 ## Writes every modified buffer, waiting for Neovim to finish.
@@ -295,7 +300,7 @@ func _on_notification(method: String, params: Array) -> void:
 			if not _pending_open.is_empty():
 				var p: Array = _pending_open
 				_pending_open = []
-				open_file(p[0], p[1], p[2])
+				open_file(p[0], p[1], p[2], p[3])
 		"godot_nvim_scene_tab":
 			scene_tab_entered.emit(params[0])
 		"godot_nvim_buf_enter":
