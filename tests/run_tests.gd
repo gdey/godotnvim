@@ -19,6 +19,7 @@ func _init() -> void:
 	await _test_embed()
 	await _test_view_drop()
 	await _test_session()
+	await _test_clean()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
 	quit(1 if _failures else 0)
 
@@ -624,3 +625,48 @@ func _test_session() -> void:
 	view.stop()
 	check(FileAccess.get_file_as_string(session) == kept, "no save when off")
 	view.queue_free()
+
+
+## start_clean skips the user's config, but not the plugin's own Lua, and a
+## restart applies it on the file that was open.
+func _test_clean() -> void:
+	print("clean")
+	var cwd := OS.get_cache_dir().path_join("godot nvim clean")
+	DirAccess.make_dir_recursive_absolute(cwd.path_join("config/nvim"))
+	FileAccess.open(cwd.path_join("config/nvim/init.lua"), FileAccess.WRITE).store_string("vim.g.user_config = 1\n")
+	var a := cwd.path_join("a.gd")
+	FileAccess.open(a, FileAccess.WRITE).store_string("extends Node\n")
+	var xdg := OS.get_environment("XDG_CONFIG_HOME")
+	OS.set_environment("XDG_CONFIG_HOME", cwd.path_join("config"))
+	var state_lua := "return {vim.g.user_config or 0, _G.godot_nvim ~= nil, #vim.api.nvim_get_runtime_file('colors/godot.lua', false), vim.tbl_contains(vim.v.argv, '--clean'), vim.fn.expand('%:t')}"
+	var view := NvimView.new()
+	view.nvim_path = _nvim_path()
+	view.nvim_args = PackedStringArray(["-n"])
+	view.working_dir = cwd
+	view.auto_restart = false
+	view.size = Vector2(800, 400)
+	root.add_child(view)
+	view.start()
+	view.open_file(a)
+	var st: Array = []
+	await _wait(func():
+		st.assign(view.rpc.request_sync("nvim_exec_lua", [state_lua, []]))
+		return st[1] is Array and st[1][4] == "a.gd")
+	check(st[1] is Array and st[1][0] == 1 and not st[1][3], "user config loads when off: %s" % [st])
+	view.clean = true
+	view.restart()
+	await _wait(func():
+		st.assign(view.rpc.request_sync("nvim_exec_lua", [state_lua, []]))
+		return view.entered and st[1] is Array and st[1][4] == "a.gd")
+	check(st[1] is Array and st[1][3], "started with --clean: %s" % [st])
+	check(st[1] is Array and st[1][0] == 0, "user config skipped: %s" % [st])
+	check(st[1] is Array and st[1][1] and st[1][2] > 0, "plugin Lua and runtime loaded: %s" % [st])
+	check(st[1] is Array and st[1][4] == "a.gd", "restart reopens the last file: %s" % [st])
+	var msgs: Array = await _req(view, "nvim_exec2", ["messages", {"output": true}])
+	check(msgs[1] is Dictionary and String(msgs[1].get("output", "")).contains("started clean"), "says it started clean: %s" % [msgs])
+	view.stop()
+	view.queue_free()
+	if xdg != "":
+		OS.set_environment("XDG_CONFIG_HOME", xdg)
+	else:
+		OS.unset_environment("XDG_CONFIG_HOME")

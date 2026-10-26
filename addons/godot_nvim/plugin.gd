@@ -9,6 +9,7 @@ const SETTING_THEME := "godot_nvim/use_editor_colors"
 const SETTING_FORMAT := "godot_nvim/format_on_save"
 const SETTING_FORMATTER := "godot_nvim/formatter_command"
 const SETTING_SESSION := "godot_nvim/restore_session"
+const SETTING_CLEAN := "godot_nvim/start_clean"
 ## Per project, and kept out of version control with the rest of .godot/.
 const _SESSION_FILE := "res://.godot/godot_nvim/session.vim"
 
@@ -59,6 +60,7 @@ func _enter_tree() -> void:
 	view.nvim_args = PackedStringArray(String(es.get_setting(SETTING_ARGS)).split(" ", false))
 	view.working_dir = ProjectSettings.globalize_path("res://")
 	view.session_file = _session_file()
+	view.clean = es.get_setting(SETTING_CLEAN)
 	if es.get_setting(SETTING_LSP):
 		view.lsp_host = es.get_setting("network/language_server/remote_host")
 		view.lsp_port = es.get_setting("network/language_server/remote_port")
@@ -92,6 +94,7 @@ func _enter_tree() -> void:
 	es.settings_changed.connect(_sync_theme)
 	es.settings_changed.connect(_sync_formatter)
 	es.settings_changed.connect(_sync_session)
+	es.settings_changed.connect(_sync_clean)
 	# Picking a text editor theme sets its colors only when the editor theme
 	# is rebuilt, after settings_changed and without another one.
 	view.theme_changed.connect(_sync_theme)
@@ -126,6 +129,8 @@ func _exit_tree() -> void:
 		es.settings_changed.disconnect(_sync_formatter)
 	if es.settings_changed.is_connected(_sync_session):
 		es.settings_changed.disconnect(_sync_session)
+	if es.settings_changed.is_connected(_sync_clean):
+		es.settings_changed.disconnect(_sync_clean)
 	if _debugger:
 		remove_debugger_plugin(_debugger)
 		_debugger = null
@@ -380,6 +385,19 @@ func _session_file() -> String:
 func _sync_session() -> void:
 	if view and _session_file() != view.session_file:
 		view.set_session_file(_session_file())
+
+
+## Restarts Neovim when godot_nvim/start_clean changes, unless that would
+## lose unsaved changes; then it applies on the next restart.
+func _sync_clean() -> void:
+	var clean: bool = EditorInterface.get_editor_settings().get_setting(SETTING_CLEAN)
+	if view == null or clean == view.clean:
+		return
+	view.clean = clean
+	if _unsaved.is_empty():
+		view.restart()
+	else:
+		view.notify("godot_nvim: Start Clean applies when Neovim restarts. Save, then :qa", 3)
 
 
 # --- Colors ------------------------------------------------------------------
@@ -697,3 +715,7 @@ func _ensure_settings() -> void:
 		es.set_setting(SETTING_SESSION, true)
 	es.set_initial_value(SETTING_SESSION, true, false)
 	es.add_property_info({"name": SETTING_SESSION, "type": TYPE_BOOL})
+	if not es.has_setting(SETTING_CLEAN):
+		es.set_setting(SETTING_CLEAN, false)
+	es.set_initial_value(SETTING_CLEAN, false, false)
+	es.add_property_info({"name": SETTING_CLEAN, "type": TYPE_BOOL})

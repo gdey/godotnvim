@@ -4,6 +4,16 @@ All notable changes to this plugin are listed here. Versions follow
 [Semantic Versioning](https://semver.org/); the version lives in
 `addons/godot_nvim/plugin.cfg`.
 
+## [Unreleased]
+
+### Added
+
+- Editor Settings → `godot_nvim/start_clean` (off by default) starts Neovim
+  with `--clean`, without your config, plugins and ShaDa, to rule them out
+  when something misbehaves. The plugin's own features, including the
+  session and format on save, keep working. Changing it restarts Neovim,
+  or waits for `:qa` if there are unsaved changes.
+
 ## [0.3.0] - 2026-10-25
 
 ### Added
