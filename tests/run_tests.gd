@@ -836,6 +836,27 @@ func _test_scene_tabs() -> void:
 	var line: Array = await _req(view, "nvim_eval", ["&tabline"])
 	var label: Array = await _req(view, "nvim_exec_lua", ["return godot_nvim.tabline()", []])
 	check(line[1] == "%!v:lua.godot_nvim.tabline()" and "a.tscn │ a.gd" in String(label[1]), "tab labels name the scene: %s" % [label])
+	# :bw in a scene's tab shows the next buffer there, as with one tab
+	# page, instead of closing the tab page and switching scenes.
+	view.rpc.request("nvim_command", ["tabnext 2"])
+	await _req(view, "nvim_eval", ["1"])
+	view.sync_scenes([{"key": A}, {"key": B}, {"key": C}], PackedStringArray(), B)
+	view.rpc.request("nvim_command", ["edit " + b.replace(" ", "\\ ")])
+	var asked := entered.size()
+	await _req(view, "nvim_command", ["bwipeout"])
+	await create_timer(0.3).timeout
+	t = await tabs.call(view)
+	check(t == [[[A, ["a.gd"]], [B, ["a.gd"]], [C, [""]]], 2], ":bw keeps the scene's tab, on the next buffer: %s" % [t])
+	check(entered.size() == asked, ":bw doesn't switch Godot's scene: %s" % [entered])
+	# A wiped buffer that was alone in other scenes' tabs keeps those too.
+	await _req(view, "nvim_command", ["bdelete"])
+	await create_timer(0.3).timeout
+	t = await tabs.call(view)
+	check(t[0].size() == 3 and t[0].map(func(x): return x[0]) == [A, B, C] and t[1] == 2, ":bd keeps every scene's tab: %s" % [t])
+	check(entered.size() == asked, ":bd doesn't switch Godot's scene: %s" % [entered])
+	# Back to a.gd in A's and B's tabs, as before.
+	view.open_file(a)
+	await _req(view, "nvim_exec_lua", ["vim.api.nvim_win_set_buf(vim.api.nvim_tabpage_get_win(vim.api.nvim_list_tabpages()[1]), vim.fn.bufnr(...))", [a]])
 	# Closing B closes its tab; its edited buffer is kept.
 	view.rpc.request("nvim_command", ["tabnext 2"])
 	await _req(view, "nvim_eval", ["1"])

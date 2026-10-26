@@ -24,6 +24,10 @@ The release workflow turns a version's section into its GitHub release notes.
 - The addon is no longer exported with your game. Its scripts were included
   in every export, though nothing loaded them; an export plugin now skips
   everything under `addons/godot_nvim/` while the plugin is enabled.
+- `:bwipeout` or `:bdelete` on a buffer that was the only window of a scene's
+  tab page closed the tab page and switched Godot to another scene. The tab
+  page now stays and shows the next buffer, as Neovim does with a single tab
+  page.
 
 ## [0.4.0] - 2026-10-26
 

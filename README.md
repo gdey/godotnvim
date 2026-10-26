@@ -137,6 +137,8 @@ jumping there would switch scenes.
   first scene takes the tab page Neovim already has.
 - Closing a scene closes its tab page. Its buffers stay open, and ones with
   unsaved changes are kept hidden; `:ls` lists them.
+- `:bd` or `:bw` in a scene's tab page shows the next buffer there, as with a
+  single tab page, rather than closing the tab page.
 - A scene saved under a new name (Save Scene As, or a new scene's first save)
   keeps its tab page.
 - Tab pages you make yourself aren't tied to a scene and are left alone.
