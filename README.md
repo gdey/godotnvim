@@ -409,7 +409,7 @@ Bump `version` in `addons/godot_nvim/plugin.cfg`, add a section for it to
 tag:
 
 ```sh
-git tag v0.3.0 && git push origin v0.3.0
+git tag v0.4.0 && git push origin v0.4.0
 ```
 
 The Release workflow checks the tag against `plugin.cfg`, runs the addon's and

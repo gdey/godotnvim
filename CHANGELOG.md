@@ -4,7 +4,7 @@ All notable changes to this plugin are listed here. Versions follow
 [Semantic Versioning](https://semver.org/); the version lives in
 `addons/godot_nvim/plugin.cfg`.
 
-## [Unreleased]
+## [0.4.0] - 2026-10-26
 
 ### Added
 
@@ -98,6 +98,7 @@ First release.
 - Asset Library packaging, and a release workflow that publishes the addon
   zip when a version tag is pushed.
 
+[0.4.0]: https://github.com/gdey/godotnvim/releases/tag/v0.4.0
 [0.3.0]: https://github.com/gdey/godotnvim/releases/tag/v0.3.0
 [0.2.0]: https://github.com/gdey/godotnvim/releases/tag/v0.2.0
 [0.1.0]: https://github.com/gdey/godotnvim/releases/tag/v0.1.0
