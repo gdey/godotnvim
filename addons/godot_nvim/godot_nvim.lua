@@ -66,10 +66,10 @@ local placeholder
 -- so it is still there when Neovim exits.
 local quit_spare
 
-local function normal_wins()
+local function normal_wins(tab)
   return vim.tbl_filter(function(w)
     return vim.api.nvim_win_get_config(w).relative == ""
-  end, vim.api.nvim_tabpage_list_wins(0))
+  end, vim.api.nvim_tabpage_list_wins(tab or 0))
 end
 
 -- The buffer to show once [buf] is gone: the alternate file, any other
@@ -280,17 +280,144 @@ function M.unlink_scene(key)
   end
 end
 
+-- Asks Godot to switch to the current tab's scene, if it has one.
+local function follow_tab()
+  if not M.scene_tabs then
+    return
+  end
+  local key = scene_of(0)
+  if key and key ~= M.current_scene then
+    M.current_scene = key
+    vim.rpcnotify(chan, "godot_nvim_scene_tab", key)
+  end
+end
+
+-- :bdelete and :bwipeout close every window showing the buffer, and a tab
+-- page closes with its last window when there are others. With one tab page
+-- the window stays and shows another buffer; a scene's tab page should do
+-- the same, not vanish and switch Godot's scene. Neovim has no hook before
+-- the windows close, so note the scene tabs losing their last window and
+-- put them back once the command is over and the buffer is gone.
+
+-- Tab page -> { key, number, buf, alt, current } while its last window closes.
+local closing = {}
+-- A tab page closed while one of those was closing; the check is queued.
+local restore_queued = false
+-- The tab page being left during the current command. A tab page's last
+-- window closes after Neovim has left it, so this tells the current one.
+local left_tab
+
+local function restore_deleted_tabs()
+  restore_queued = false
+  -- Only now: Neovim 0.9 still calls a tab page valid during TabClosed.
+  local list = {}
+  for tab, c in pairs(closing) do
+    if not vim.api.nvim_tabpage_is_valid(tab) then
+      table.insert(list, c)
+    end
+  end
+  closing = {}
+  table.sort(list, function(x, y)
+    return x.number < y.number
+  end)
+  local back
+  for _, c in ipairs(list) do
+    local gone = not vim.api.nvim_buf_is_valid(c.buf) or not vim.bo[c.buf].buflisted
+    if gone and not scene_tab(c.key) then
+      quietly(function()
+        local from = vim.api.nvim_get_current_tabpage()
+        vim.cmd(math.min(c.number - 1, #vim.api.nvim_list_tabpages()) .. "tabnew")
+        local empty = vim.api.nvim_get_current_buf()
+        local nb = c.alt
+        if not (nb > 0 and nb ~= c.buf and vim.api.nvim_buf_is_valid(nb) and vim.bo[nb].buflisted) then
+          nb = next_buffer(c.buf)
+        end
+        vim.api.nvim_win_set_buf(0, nb)
+        if nb ~= empty then
+          pcall(vim.api.nvim_buf_delete, empty, { force = true })
+        end
+        local tab = vim.api.nvim_get_current_tabpage()
+        vim.api.nvim_tabpage_set_var(tab, "godot_scene", c.key)
+        if c.current then
+          back = tab
+        end
+        vim.api.nvim_set_current_tabpage(from)
+      end)
+    end
+  end
+  if back then
+    quietly(vim.api.nvim_set_current_tabpage, back)
+  end
+  vim.cmd.redrawtabline()
+  follow_tab()
+end
+
+vim.api.nvim_create_autocmd("WinClosed", {
+  group = group,
+  callback = function(ev)
+    if switching or not M.scene_tabs then
+      return
+    end
+    local win = tonumber(ev.match)
+    if not (win and vim.api.nvim_win_is_valid(win)) or vim.api.nvim_win_get_config(win).relative ~= "" then
+      return
+    end
+    local tab = vim.api.nvim_win_get_tabpage(win)
+    local key = scene_of(tab)
+    if not key or #normal_wins(tab) ~= 1 then
+      return
+    end
+    closing[tab] = {
+      key = key,
+      number = vim.api.nvim_tabpage_get_number(tab),
+      buf = vim.api.nvim_win_get_buf(win),
+      alt = vim.api.nvim_win_call(win, function()
+        return vim.fn.bufnr("#")
+      end),
+      current = win == vim.api.nvim_get_current_win() or tab == left_tab,
+    }
+    -- Forget it once the command is over, unless its tab page closed.
+    vim.schedule(function()
+      if not restore_queued then
+        closing = {}
+      end
+    end)
+  end,
+})
+
+vim.api.nvim_create_autocmd("TabLeave", {
+  group = group,
+  callback = function()
+    left_tab = vim.api.nvim_get_current_tabpage()
+    vim.schedule(function()
+      left_tab = nil
+    end)
+  end,
+})
+
+vim.api.nvim_create_autocmd("TabClosed", {
+  group = group,
+  callback = function()
+    if next(closing) and not restore_queued then
+      restore_queued = true
+      vim.schedule(restore_deleted_tabs)
+    end
+  end,
+})
+
 vim.api.nvim_create_autocmd("TabEnter", {
   group = group,
   callback = function()
     if switching or not M.scene_tabs then
       return
     end
-    local key = scene_of(0)
-    if key and key ~= M.current_scene then
-      M.current_scene = key
-      vim.rpcnotify(chan, "godot_nvim_scene_tab", key)
-    end
+    -- After the command that entered the tab, which may be a :bwipeout
+    -- that is about to have its tab page put back.
+    vim.schedule(function()
+      if not restore_queued then
+        follow_tab()
+      end
+    end)
   end,
 })
 
