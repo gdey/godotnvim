@@ -1,0 +1,121 @@
+# The project website, published to GitHub Pages by
+# .github/workflows/pages.yml. The documentation pages are the repository's
+# own Markdown files, mounted below, so the site never drifts from them:
+# edit README.md, CHANGELOG.md and friends, not copies under site/.
+#
+# Preview locally from the repository root:
+#   hugo server --source site
+baseURL = "https://gdey.github.io/godotnvim/"
+title = "godotnvim"
+locale = "en-US"
+disableKinds = ["taxonomy", "term", "RSS", "sitemap"]
+enableRobotsTXT = true
+
+[params]
+  description = "Edit GDScript in an embedded Neovim inside the Godot 4 editor, keeping drag and drop, the language server, breakpoints and the run shortcuts."
+  repo = "https://github.com/gdey/godotnvim"
+  branch = "main"
+
+[markup.goldmark.renderer]
+  # The repository's Markdown is trusted, and the README has no raw HTML
+  # today, but allow it so a future <details> block doesn't vanish.
+  unsafe = true
+
+[markup.highlight]
+  noClasses = false
+
+[markup.tableOfContents]
+  startLevel = 2
+  endLevel = 2
+
+# Titles and source folders for the mounted files, which have no front
+# matter. repoDir is the file's folder in the repository; the link and image
+# render hooks resolve relative paths against it.
+[[cascade]]
+  [cascade.params]
+    pageTitle = "Documentation"
+    repoDir = "."
+    repoFile = "README.md"
+  [cascade.target]
+    path = "/docs"
+[[cascade]]
+  [cascade.params]
+    pageTitle = "Changelog"
+    repoDir = "."
+    repoFile = "CHANGELOG.md"
+  [cascade.target]
+    path = "/changelog"
+[[cascade]]
+  [cascade.params]
+    pageTitle = "vim2godot"
+    repoDir = "colorscheme"
+    repoFile = "colorscheme/README.md"
+  [cascade.target]
+    path = "/colorscheme"
+[[cascade]]
+  [cascade.params]
+    pageTitle = "Godot API wishlist"
+    repoDir = "docs"
+    repoFile = "docs/godot-api-wishlist.md"
+  [cascade.target]
+    path = "/wishlist"
+
+[[menus.main]]
+  name = "Docs"
+  pageRef = "/docs"
+  weight = 10
+[[menus.main]]
+  name = "Changelog"
+  pageRef = "/changelog"
+  weight = 20
+[[menus.main]]
+  name = "vim2godot"
+  pageRef = "/colorscheme"
+  weight = 30
+[[menus.main]]
+  name = "GitHub"
+  url = "https://github.com/gdey/godotnvim"
+  weight = 40
+
+# Declaring any mount replaces Hugo's defaults for that component, so the
+# site's own folders are listed too.
+[module]
+  [[module.mounts]]
+    source = "content"
+    target = "content"
+  [[module.mounts]]
+    source = "../README.md"
+    target = "content/docs.md"
+  [[module.mounts]]
+    source = "../CHANGELOG.md"
+    target = "content/changelog.md"
+  [[module.mounts]]
+    source = "../colorscheme/README.md"
+    target = "content/colorscheme.md"
+  [[module.mounts]]
+    source = "../docs/godot-api-wishlist.md"
+    target = "content/wishlist.md"
+  [[module.mounts]]
+    source = "layouts"
+    target = "layouts"
+  [[module.mounts]]
+    source = "assets"
+    target = "assets"
+  [[module.mounts]]
+    source = "data"
+    target = "data"
+  # plugin.cfg happens to be valid TOML, which gives the home page the
+  # current version.
+  [[module.mounts]]
+    source = "../addons/godot_nvim/plugin.cfg"
+    target = "data/plugin.toml"
+  [[module.mounts]]
+    source = "../docs/screenshots"
+    target = "static/docs/screenshots"
+  [[module.mounts]]
+    source = "../docs/store"
+    target = "static/docs/store"
+    files = ["! **.md"]
+  [[module.mounts]]
+    source = "../docs/icon.png"
+    target = "static/icon.png"

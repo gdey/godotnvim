@@ -1,0 +1,73 @@
+# Feature cards on the home page. Images are the Asset Store screenshots in
+# docs/store/; "docs" is the README heading each card links to.
+- title: Drag and drop
+  image: drag-and-drop.webp
+  alt: Ctrl-dropping two nodes from the Scene dock inserts @onready vars
+  docs: use
+  text: >-
+    Drop a node from the Scene dock to insert `$Path/To/Node`, or hold
+    Ctrl/Cmd for an `@onready var`. Files drop in as `"res://path"` or a
+    `preload`.
+- title: Inspector properties
+  image: inspector-drop.webp
+  alt: Dropping an Inspector property inserts its node path
+  docs: use
+  text: >-
+    Drag a property from the Inspector to insert `$Path/To/Node.property`, or
+    the NodePath string that animation tracks take.
+- title: Language server
+  image: lsp-hover.webp
+  alt: Hover docs from Godot's GDScript language server
+  docs: language-server
+  text: >-
+    Hover docs with the engine class reference, go-to-definition, references,
+    rename and completion, from the language server the editor already runs.
+- title: Project-wide function search
+  image: function-search.webp
+  alt: GodotFunc jumping to a function in another file
+  docs: language-server
+  text: >-
+    `:GodotFunc <name>` jumps to a function in any `.gd` file of the project,
+    with name completion.
+- title: Signals and overrides
+  image: signals-go-to-method.webp
+  alt: Go to Method in the Signals dock jumps to the connected method in Neovim
+  docs: signal-connections-and-overrides
+  text: >-
+    Signs mark connected and overriding methods, and the Signals dock's Go to
+    Method opens the method in Neovim.
+- title: Run from Neovim
+  image: run-file.webp
+  alt: GodotRunFile runs an EditorScript and its output shows in the Output panel
+  docs: running-the-project
+  text: >-
+    Godot's run, pause and stop shortcuts work while you type, and
+    `:GodotRunFile` runs an `EditorScript`.
+- title: Format on save
+  image: format-on-save.webp
+  alt: A script before and after saving with format on save
+  docs: formatting
+  text: >-
+    `gdscript-formatter` or `gdformat` on `:w`. Only changed lines are
+    replaced, so breakpoints, marks and the cursor stay put.
+- title: Sessions
+  image: session-restore.webp
+  alt: Two splits and a second tab, restored when the project reopens
+  docs: reopening-files
+  text: >-
+    Open files, cursors, splits and tabs are saved when the editor closes and
+    come back when the project reopens.
+- title: Scene tabs
+  image: scene-tabs.webp
+  alt: Each open scene has its own Neovim tab page
+  docs: scene-tabs
+  text: >-
+    Each open scene gets its own Neovim tab page, and switching on either side
+    switches the other.
+- title: Editor profiles
+  image: editor-profiles.webp
+  alt: The main screen tabs with the Script tab hidden by a -neovim profile
+  docs: hiding-the-script-screen
+  text: >-
+    One menu item makes copies of your editor feature profiles with the Script
+    tab hidden, so Neovim is the only script editor.
