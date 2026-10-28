@@ -296,7 +296,7 @@ Like Godot's script editor, a swatch (`■`) in the color sits before each
 `Color` literal in a `.gd` buffer. Clicking the swatch, `:GodotColor`, or
 `gC` in normal mode with the cursor on the literal opens Godot's color
 picker below it. Each pick rewrites the literal, and one `u` undoes all the
-picks you made while the picker was open. The list under the sliders chooses
+picks you made while the picker was open. The list under the picker chooses
 how the color is written: `Color(r, g, b, a)`, `Color("rrggbbaa")`,
 `Color.from_hsv(...)`, `Color.from_ok_hsl(...)`, `Color.from_rgba8(...)` or
 `Color(0xrrggbbaa)`. The picker starts in the mode and shape you last used
