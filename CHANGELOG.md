@@ -10,6 +10,15 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ## [Unreleased]
 
+**Neovim 0.10 is now the minimum.** The README and website said 0.9 and the
+Asset Store page 0.11; Neovim 0.9 has no inline virtual text, so the color
+swatches and resource icons don't show there.
+
+### Fixed
+
+- Every page now gives the same requirement: Neovim 0.10 or newer, with 0.11+
+  recommended. Pull requests now run the tests on Neovim 0.10.0 and 0.11.4.
+
 ## [0.5.0] - 2026-10-28
 
 `Color` literals get a swatch that opens Godot's color picker, and resource

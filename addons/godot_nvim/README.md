@@ -29,7 +29,7 @@ inside the Godot editor with Neovim's UI protocol.
 
 ## Requirements
 
-Godot 4.5 or newer. Neovim 0.9 or newer, installed separately. The plugin looks in
+Godot 4.5 or newer. Neovim 0.10 or newer, installed separately. The plugin looks in
 `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` and the default Windows
 install folder, then your `PATH`. Set another path in Editor Settings →
 `godot_nvim/nvim_path`.

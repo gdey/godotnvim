@@ -24,7 +24,7 @@ Website: [gdey.github.io/godotnvim](https://gdey.github.io/godotnvim/)
 - **Godot 4.5 or newer.** The tests pass on 4.5.1, 4.6.1 and 4.7.1. On 4.4
   the editor can be killed by `SIGPIPE` when Neovim stops, and 4.3 lacks
   APIs the plugin uses.
-- **Neovim 0.9 or newer**, installed separately. 0.11+ is recommended for its
+- **Neovim 0.10 or newer**, installed separately. 0.11+ is recommended for its
   default LSP mappings.
 - **Platforms:** Linux is tested. macOS is in daily use. Windows should work
   but is untested; reports welcome.
@@ -328,8 +328,7 @@ swatch and no picker, since a pick would overwrite the expression.
 
 Set `vim.g.godot_nvim_color_key` to another key, or to `false` for none, and
 `vim.g.godot_nvim_color_swatch` to another glyph. `vim.g.godot_nvim_color_swatches
-= false` turns the swatches off. Swatches need Neovim 0.10 or newer;
-`:GodotColor` works on 0.9 too.
+= false` turns the swatches off.
 
 ## Resource paths
 
@@ -363,8 +362,7 @@ default `mousemodel`).
 `vim.g.godot_nvim_resource_icons = false` turns the icons off, and
 `vim.g.godot_nvim_resource_icon` shows that glyph instead of the icons.
 Quick Open lists only files with a UID, which Godot gives every file it
-imports or saves. Icons need Neovim 0.10 or newer; the commands work on
-0.9 too.
+imports or saves.
 
 ## Language server
 
