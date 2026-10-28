@@ -291,11 +291,18 @@ func _on_icon_preview(_path: String, preview: Texture2D, small: Texture2D, set_i
 		set_icon.call(small)
 
 
+# Whether [param path] is a scene. Not ResourceLoader.exists(path,
+# "PackedScene"): the importer's loader ignores the type, so that is true
+# for any imported file, such as an image.
+static func _is_scene(path: String) -> bool:
+	return EditorInterface.get_resource_filesystem().get_file_type(path) == "PackedScene"
+
+
 # Opens a scene in the 2D or 3D editor, as its root is, and anything else as
 # the FileSystem dock does: scripts and text in Neovim, other resources in
 # the Inspector.
 func _open_resource(path: String) -> void:
-	if EditorInterface.get_resource_filesystem().get_file_type(path) == "PackedScene":
+	if _is_scene(path):
 		EditorInterface.open_scene_from_path(path)
 		var root := EditorInterface.get_edited_scene_root()
 		if root and root.scene_file_path == path:
@@ -468,7 +475,7 @@ func _run(action: String, arg: String) -> void:
 				EditorInterface.popup_quick_open(func(path: String) -> void:
 					if path != "":
 						EditorInterface.play_custom_scene(path), ["PackedScene"])
-			elif ResourceLoader.exists(arg, "PackedScene"):
+			elif _is_scene(arg):
 				EditorInterface.play_custom_scene(arg)
 			else:
 				push_warning("godot_nvim: not a scene: " + arg)

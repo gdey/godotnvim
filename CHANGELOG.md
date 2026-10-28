@@ -52,6 +52,8 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ### Fixed
 
+- `:GodotRunScene` with an image or other imported file ran it as a scene
+  instead of warning that it is not one.
 - The addon is no longer exported with your game. Its scripts were included
   in every export, though nothing loaded them; an export plugin now skips
   everything under `addons/godot_nvim/` while the plugin is enabled.
