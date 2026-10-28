@@ -46,6 +46,9 @@ The release workflow turns a version's section into its GitHub release notes.
 
   ![Go to Method jumps to the connected method in Neovim](docs/screenshots/signals-go-to-method.gif)
 
+- `vim.g.godot_nvim` is set before your config loads, so it can tell the
+  Neovim inside Godot apart, for example to turn off lazy.nvim's update list
+  there.
 - A project website, [gdey.github.io/godotnvim](https://gdey.github.io/godotnvim/),
   with the features, install steps, the README as documentation and this
   changelog.
@@ -54,6 +57,11 @@ The release workflow turns a version's section into its GitHub release notes.
 
 - `:GodotRunScene` with an image or other imported file ran it as a scene
   instead of warning that it is not one.
+- Starting Godot showed `Could not connect to 127.0.0.1:6005, reason:
+  "ECONNREFUSED"` in Neovim, and `.gd` files opened at startup got no
+  language server. Godot starts its language server only once the editor has
+  loaded, after Neovim opens the session's files; the plugin now waits for
+  the server before attaching, and `:GodotErrors` waits for it too.
 - The addon is no longer exported with your game. Its scripts were included
   in every export, though nothing loaded them; an export plugin now skips
   everything under `addons/godot_nvim/` while the plugin is enabled.

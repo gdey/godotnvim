@@ -13,6 +13,8 @@ local chan, opts = ...
 opts = opts or {}
 local M = {}
 _G.godot_nvim = M
+-- Set before the user's config loads, so it can tell it runs inside Godot.
+vim.g.godot_nvim = true
 
 local group = vim.api.nvim_create_augroup("godot_nvim", { clear = true })
 
@@ -1384,12 +1386,75 @@ if bufname(0) ~= "" then
   vim.rpcnotify(chan, "godot_nvim_buf_enter", bufname(0))
 end
 
+-- Godot's language server starts listening only once the editor has finished
+-- loading, which is after Neovim has started and opened the session's files.
+-- Connecting before then fails, and Neovim warns about it, so we wait until
+-- the port takes connections. lsp_up is true from then until our client exits.
+local lsp_up = false
+local lsp_waiters
+local lsp_warned = false
+
+-- Calls [fn] with true once the language server takes connections, or with
+-- false if it hasn't after two minutes.
+local function when_lsp_up(fn)
+  if lsp_up then
+    fn(true)
+    return
+  end
+  if lsp_waiters then
+    table.insert(lsp_waiters, fn)
+    return
+  end
+  lsp_waiters = { fn }
+  local uv = vim.uv or vim.loop
+  local host, port = opts.lsp.host, opts.lsp.port
+  local info = uv.getaddrinfo(host, nil, { socktype = "stream" })
+  local addr = info and info[1] and info[1].addr or host
+  local deadline = uv.now() + 120000
+  local function try()
+    local tcp = uv.new_tcp()
+    local ok = pcall(tcp.connect, tcp, addr, port, function(err)
+      tcp:close()
+      vim.schedule(function()
+        if err and uv.now() < deadline then
+          vim.defer_fn(try, 500)
+          return
+        end
+        lsp_up = not err
+        if err and not lsp_warned then
+          lsp_warned = true
+          vim.notify(string.format("godot_nvim: Godot's language server isn't answering on %s:%d", host, port),
+            vim.log.levels.WARN)
+        end
+        local waiters = lsp_waiters
+        lsp_waiters = nil
+        for _, f in ipairs(waiters) do
+          f(lsp_up)
+        end
+      end)
+    end)
+    if not ok then
+      tcp:close()
+      local waiters = lsp_waiters
+      lsp_waiters = nil
+      for _, f in ipairs(waiters) do
+        f(false)
+      end
+    end
+  end
+  try()
+end
+
 local function lsp_config()
   return {
     name = "gdscript",
     cmd = vim.lsp.rpc.connect(opts.lsp.host, opts.lsp.port),
     root_dir = opts.root,
     filetypes = { "gdscript" },
+    -- Godot restarted its language server (or quit): wait for it again.
+    on_exit = function()
+      lsp_up = false
+    end,
   }
 end
 
@@ -1411,7 +1476,11 @@ function M.lsp_attach(buf)
     if #get_clients({ bufnr = buf, name = "gdscript" }) > 0 then
       return
     end
-    vim.lsp.start(lsp_config(), { bufnr = buf })
+    when_lsp_up(function(up)
+      if up and vim.api.nvim_buf_is_valid(buf) and #get_clients({ bufnr = buf, name = "gdscript" }) == 0 then
+        vim.lsp.start(lsp_config(), { bufnr = buf })
+      end
+    end)
   end)
 end
 
@@ -1455,6 +1524,16 @@ end
 local function with_lsp_client(fn)
   local client = lsp_client()
   if not client and opts.lsp then
+    if not lsp_up then
+      when_lsp_up(function(up)
+        if up then
+          with_lsp_client(fn)
+        else
+          fn(nil)
+        end
+      end)
+      return
+    end
     local id
     if vim.fn.has("nvim-0.11") == 1 then
       id = vim.lsp.start(lsp_config(), { attach = false })
