@@ -1,0 +1,48 @@
+# Runs the tests on pull requests, on the oldest Neovim the plugin supports
+# and on the one the release is tested with.
+name: Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 4.7.1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 0.10.0 is the minimum (inline virtual text, for the swatches and
+        # resource icons); keep 0.11.4 in step with release.yml.
+        nvim: ["0.10.0", "0.11.4"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Neovim and Godot
+        run: |
+          # Builds before 0.10.4 are named nvim-linux64.
+          base="https://github.com/neovim/neovim/releases/download/v${{ matrix.nvim }}"
+          curl -sSfLo nvim.tar.gz "$base/nvim-linux-x86_64.tar.gz" || curl -sSfLo nvim.tar.gz "$base/nvim-linux64.tar.gz"
+          mkdir nvim && tar xzf nvim.tar.gz -C nvim --strip-components=1
+          echo "$PWD/nvim/bin" >> "$GITHUB_PATH"
+          curl -sSLo godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          echo "GODOT=$PWD/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+
+      - name: Run tests
+        run: |
+          nvim --version | head -1
+          "$GODOT" --headless --path . --editor --quit
+          NVIM=$(command -v nvim) "$GODOT" --headless --path . -s tests/run_tests.gd
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: colorscheme/go.mod
+          cache: false
+
+      - name: Test colorscheme tool
+        working-directory: colorscheme
+        run: NVIM=$(command -v nvim) go test ./...

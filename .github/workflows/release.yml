@@ -15,8 +15,8 @@ permissions:
 
 env:
   GODOT_VERSION: 4.7.1
-  # Ubuntu's neovim package is older than the plugin supports (0.11+), and
-  # the swatches and resource icons need 0.10+, so use an upstream build.
+  # Ubuntu's neovim package (0.9.5) is older than the plugin supports
+  # (0.10+), so use an upstream build. tests.yml also runs the tests on 0.10.
   NVIM_VERSION: 0.11.4
 
 jobs:
