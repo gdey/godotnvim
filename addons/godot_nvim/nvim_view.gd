@@ -22,6 +22,9 @@ signal run_requested(action: String, arg: String)
 ## The user entered the Neovim tab page of the scene [param key] (see
 ## [method sync_scenes]).
 signal scene_tab_entered(key: String)
+## The user asked to open the scene at res:// [param path] in the editor
+## (:GodotScene, or a double-click on a scene icon).
+signal scene_open_requested(path: String)
 signal nvim_exited
 
 @export var nvim_path := "nvim"
@@ -54,6 +57,10 @@ var drop_builder := Callable()
 ## Callable(picker: ColorPicker) applying the editor's color picker settings
 ## to the :GodotColor picker. Unset leaves the picker's defaults.
 var color_picker_setup := Callable()
+## Callable(current: String, done: Callable) letting the user pick a scene
+## in place of the res:// path [param current]; it calls [param done] with
+## the new res:// path. Unset means :GodotScenePick does nothing.
+var scene_picker := Callable()
 
 var rpc := NvimRpc.new()
 var grid := NvimGrid.new()
@@ -77,6 +84,13 @@ var _last_mouse_cell := Vector2i(-1, -1)
 var _color_popup: NvimColorPopup
 ## [buf, row, byte column] of the literal the color popup edits.
 var _color_at := []
+## The editor's PackedScene icon, drawn where Neovim shows SCENE_ICON.
+var _scene_icon: Texture2D
+
+## The character godot_nvim.lua puts before scene paths, followed by a
+## space; the view draws the editor's scene icon over both cells. A
+## private-use character no font draws, so it stands only for the icon.
+const SCENE_ICON := "\U0F0000"
 
 
 func _init() -> void:
@@ -313,6 +327,10 @@ func _on_notification(method: String, params: Array) -> void:
 			_send_swatches(params[0], params[1], params[2])
 		"godot_nvim_pick_color":
 			_pick_color(params[0], params[1], params[2], params[3], params[4], params[5])
+		"godot_nvim_scenes":
+			_send_scene_icons(params[0], params[1], params[2], params[3])
+		"godot_nvim_scene":
+			_on_scene_command(params[0], params[1], params[2], params[3], params[4], params[5])
 		"godot_nvim_buf_enter":
 			if params[0] != "":
 				_last_file = params[0]
@@ -332,6 +350,7 @@ func _on_exited() -> void:
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_THEME_CHANGED:
+			_scene_icon = get_theme_icon("PackedScene", "EditorIcons") if has_theme_icon("PackedScene", "EditorIcons") else null
 			_update_metrics()
 		NOTIFICATION_FOCUS_ENTER:
 			if attached:
@@ -420,9 +439,21 @@ func _draw_row(r: int) -> void:
 			# would otherwise drift off the grid over a run.
 			var f := _font_for(a)
 			for i in range(start, c):
+				if t[i] == SCENE_ICON and _scene_icon:
+					_draw_scene_icon(i, y, i + 1 < grid.width and t[i + 1] == " ")
+					continue
 				if t[i] != "" and t[i] != " ":
 					draw_string(f, Vector2(i * _cell.x, y + _ascent), t[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, cols[0])
 		_draw_decorations(a, cols, x, y, w)
+
+
+## The scene icon at cell [param col] of the row at [param y], over the next
+## cell too when [param two] (it is a space): icons are square, cells tall.
+func _draw_scene_icon(col: int, y: float, two: bool) -> void:
+	var w := _cell.x * (2 if two else 1)
+	var side := minf(w, _cell.y) - 2
+	var pos := Vector2(col * _cell.x + (w - side) / 2, y + (_cell.y - side) / 2)
+	draw_texture_rect(_scene_icon, Rect2(pos, Vector2(side, side)), false)
 
 
 func _draw_decorations(a: Dictionary, cols: Array[Color], x: float, y: float, w: float) -> void:
@@ -617,3 +648,46 @@ func _on_color_picked(old_text: String, new_text: String) -> void:
 				_color_at = []
 				if _color_popup:
 					_color_popup.hide())
+
+
+# --- Scenes --------------------------------------------------------------------
+
+## Answers godot_nvim.request_scene_icons: [param lines] are [row, text]
+## pairs of buffer [param buf] at changedtick [param tick], whose file is
+## [param file].
+func _send_scene_icons(buf: int, tick: int, file: String, lines: Array) -> void:
+	var script_path := ProjectSettings.localize_path(file) if file != "" else ""
+	var icons := []
+	for l in lines:
+		var text: String = l[1]
+		for lit in SceneLiteral.parse(text, script_path):
+			icons.append([l[0], ColorLiteral.byte_col(text, lit["start"])])
+	rpc.request("nvim_exec_lua", ["godot_nvim.set_scene_icons(...)", [buf, tick, icons]])
+
+
+## Answers :GodotScene ([param action] "open") and :GodotScenePick ("pick")
+## on the scene path at byte [param col] of [param line], 0-based
+## [param row] of buffer [param buf], whose file is [param file].
+func _on_scene_command(action: String, buf: int, file: String, row: int, line: String, col: int) -> void:
+	var script_path := ProjectSettings.localize_path(file) if file != "" else ""
+	var lit := SceneLiteral.at(line, ColorLiteral.char_col(line, col), script_path)
+	if lit.is_empty():
+		notify("godot_nvim: no scene path under the cursor", 3)
+		return
+	var path := SceneLiteral.resolve(lit["path"], script_path)
+	if action == "open":
+		if not ResourceLoader.exists(path, "PackedScene"):
+			notify("godot_nvim: no scene at " + path, 3)
+			return
+		scene_open_requested.emit(path)
+		return
+	if not scene_picker.is_valid():
+		return
+	var start := ColorLiteral.byte_col(line, lit["path_start"])
+	scene_picker.call(path, func(new_path: String) -> void:
+		var text := SceneLiteral.write_as(lit["path"], new_path)
+		rpc.request("nvim_exec_lua", ["return godot_nvim.replace_text(...)",
+			[buf, row, start, lit["path"], text]],
+			func(err: Variant, res: Variant) -> void:
+				if err != null or not res:
+					notify("godot_nvim: the line changed; the scene path was not replaced", 3)))

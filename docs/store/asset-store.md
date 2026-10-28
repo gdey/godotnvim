@@ -84,6 +84,13 @@ usual.
   literal; picks rewrite it as `Color(r, g, b, a)`, a hex string, HSV,
   OKHSL, 8-bit or 0x hex, and one undo takes them back.
 
+**Scenes**
+
+- A scene icon before each `preload` or `load` of a `.tscn` or `.scn`.
+  Double-clicking it or `:GodotScene` opens the scene in Godot;
+  `:GodotScenePick` picks another scene in Godot's Quick Open dialog and
+  replaces the path, keeping `uid://` paths as UIDs.
+
 **Running**
 
 - Godot's run, pause and stop shortcuts keep working while you type, following
@@ -270,4 +277,4 @@ only the Neovim tab (a `-neovim` editor profile).
   `function-search.webp`, `format-on-save.webp`, `editor-profiles.webp`,
   `inspector-drop.webp`, `run-file.webp`, `session-restore.webp`,
   `scene-tabs.webp`, `signals-go-to-method.webp`, `project-errors.webp`,
-  `color-picker.webp`
+  `color-picker.webp`, `scene-icons.webp`
