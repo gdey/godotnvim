@@ -12,6 +12,15 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ### Added
 
+- Scene icons for scene paths, like the color swatches. An icon sits before
+  each `preload`, `load` or `ResourceLoader.load` of a `.tscn` or `.scn`
+  file (`res://`, `uid://` or relative). Double-clicking it or `:GodotScene`
+  opens the scene in Godot; `:GodotScenePick` picks another scene in Godot's
+  Quick Open dialog and replaces the path. Both are also in Neovim's
+  right-click menu.
+
+  ![Scene icons before the preload and load calls of .tscn files in Neovim](docs/screenshots/scene-icons.png)
+
 - A color picker for `Color` literals, like the script editor's. A swatch in
   the color sits before each literal; clicking it, `:GodotColor` or `gC`
   opens Godot's color picker there, and each pick rewrites the literal in

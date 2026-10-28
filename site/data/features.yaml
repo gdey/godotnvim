@@ -43,6 +43,13 @@
   text: >-
     Swatches before each `Color` literal, and Godot's color picker on a click,
     `:GodotColor` or `gC`. Picks rewrite the literal in the form you choose.
+- title: Scene paths
+  image: scene-icons.webp
+  alt: Godot's Quick Open dialog on scenes, opened from a preload in Neovim
+  docs: scene-paths
+  text: >-
+    A scene icon before each `preload` of a `.tscn`. Double-click it to open
+    the scene in Godot, or `:GodotScenePick` to swap in another scene.
 - title: Signals and overrides
   image: signals-go-to-method.webp
   alt: Go to Method in the Signals dock jumps to the connected method in Neovim

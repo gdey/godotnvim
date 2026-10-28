@@ -728,13 +728,23 @@ function M.toggle_breakpoint(buf, line)
 end
 
 -- Expr mapping for <2-LeftMouse>: a double-click in the gutter (sign,
--- number and fold columns) toggles the breakpoint on that line; anywhere
--- else keeps the usual double-click.
+-- number and fold columns) toggles the breakpoint on that line, one on a
+-- scene icon opens the scene; anywhere else keeps the usual double-click.
 function M.gutter_double_click()
   local pos = vim.fn.getmousepos()
   local info = pos.winid ~= 0 and vim.fn.getwininfo(pos.winid)[1]
   if info and pos.line > 0 and pos.wincol <= info.textoff then
     M.toggle_breakpoint(vim.api.nvim_win_get_buf(pos.winid), pos.line)
+    return ""
+  end
+  local icon = M.scene_icon_at and M.scene_icon_at(pos)
+  if icon then
+    -- Expr mappings may not move the cursor.
+    vim.schedule(function()
+      vim.api.nvim_set_current_win(icon[1])
+      vim.api.nvim_win_set_cursor(icon[1], { icon[2], icon[3] })
+      M.scene_command("open")
+    end)
     return ""
   end
   return "<2-LeftMouse>"
@@ -1741,4 +1751,123 @@ vim.api.nvim_create_autocmd("FileType", {
 -- Buffers already open when this script loaded.
 for _, buf in ipairs(vim.api.nvim_list_bufs()) do
   M.request_swatches(buf)
+end
+
+-- Scene paths: an icon before each preload/load of a .tscn or .scn, which
+-- Godot draws as its scene icon. Double-clicking it or :GodotScene opens
+-- the scene in Godot; :GodotScenePick picks another scene in its place.
+-- Godot finds the paths (scene_literal.gd); request_scene_icons sends it
+-- the lines that may have one and it answers with set_scene_icons.
+
+local scene_ns = vim.api.nvim_create_namespace("godot_nvim_scenes")
+-- A private-use character that the Godot view draws as the editor's scene
+-- icon, over it and the space after it.
+local scene_icon = "\u{F0000} "
+
+function M.request_scene_icons(buf)
+  if not inline_virt or vim.g.godot_nvim_scene_icons == false
+    or not vim.api.nvim_buf_is_loaded(buf) or vim.bo[buf].filetype ~= "gdscript" then
+    return
+  end
+  local lines = {}
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+    if l:find("load", 1, true) and (l:find(".tscn", 1, true) or l:find(".scn", 1, true) or l:find("uid://", 1, true)) then
+      table.insert(lines, { i - 1, l })
+    end
+  end
+  if #lines == 0 and not vim.b[buf].godot_nvim_scene_icons then
+    return
+  end
+  vim.rpcnotify(chan, "godot_nvim_scenes", buf, vim.api.nvim_buf_get_changedtick(buf), bufname(buf), lines)
+end
+
+-- icons: { row, start byte } of each call, for buf at changedtick tick.
+function M.set_scene_icons(buf, tick, icons)
+  if not vim.api.nvim_buf_is_loaded(buf) or vim.api.nvim_buf_get_changedtick(buf) ~= tick then
+    return
+  end
+  vim.api.nvim_buf_clear_namespace(buf, scene_ns, 0, -1)
+  vim.b[buf].godot_nvim_scene_icons = #icons > 0
+  local glyph = vim.g.godot_nvim_scene_icon or scene_icon
+  for _, s in ipairs(icons) do
+    vim.api.nvim_buf_set_extmark(buf, scene_ns, s[1], s[2], {
+      virt_text = { { glyph, "GodotSceneIcon" }, { " " } },
+      virt_text_pos = "inline",
+      right_gravity = false,
+    })
+  end
+end
+vim.api.nvim_set_hl(0, "GodotSceneIcon", { link = "Special", default = true })
+
+-- :GodotScene ("open") and :GodotScenePick ("pick") on the scene path under
+-- the cursor.
+function M.scene_command(action)
+  local buf = vim.api.nvim_get_current_buf()
+  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+  local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
+  vim.rpcnotify(chan, "godot_nvim_scene", action, buf, bufname(buf), row - 1, line, col)
+end
+
+-- Replaces old_text at row, col of buf with new_text, if it is still there.
+function M.replace_text(buf, row, col, old_text, new_text)
+  if not vim.api.nvim_buf_is_loaded(buf) then
+    return false
+  end
+  local line = vim.api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ""
+  if line:sub(col + 1, col + #old_text) ~= old_text then
+    return false
+  end
+  vim.api.nvim_buf_set_text(buf, row, col, row, col + #old_text, { new_text })
+  M.request_scene_icons(buf)
+  return true
+end
+
+-- { window, line, byte column } of the call whose scene icon the mouse
+-- position pos (from getmousepos()) is on, or nil.
+function M.scene_icon_at(pos)
+  if pos.winid == 0 or pos.line == 0 then
+    return nil
+  end
+  local buf = vim.api.nvim_win_get_buf(pos.winid)
+  local marks = vim.api.nvim_buf_get_extmarks(buf, scene_ns, { pos.line - 1, 0 }, { pos.line - 1, -1 }, {})
+  for _, m in ipairs(marks) do
+    -- col is where the icon starts; curscol is the call's own first cell.
+    local sp = vim.fn.screenpos(pos.winid, pos.line, m[3] + 1)
+    if sp.col > 0 and pos.screencol >= sp.col and pos.screencol < sp.curscol then
+      return { pos.winid, pos.line, m[3] }
+    end
+  end
+  return nil
+end
+
+vim.api.nvim_create_user_command("GodotScene", function() M.scene_command("open") end,
+  { desc = "Open the scene whose path is under the cursor in Godot" })
+vim.api.nvim_create_user_command("GodotScenePick", function() M.scene_command("pick") end,
+  { desc = "Pick a scene in Godot to replace the scene path under the cursor" })
+
+-- Right-click menu entries, shown on lines with a scene path.
+pcall(vim.cmd, [[
+  anoremenu PopUp.Open\ Scene\ in\ Godot <Cmd>GodotScene<CR>
+  anoremenu PopUp.Change\ Scene… <Cmd>GodotScenePick<CR>
+]])
+vim.api.nvim_create_autocmd("MenuPopup", {
+  group = group,
+  callback = function()
+    local row = vim.api.nvim_win_get_cursor(0)[1]
+    local on = #vim.api.nvim_buf_get_extmarks(0, scene_ns, { row - 1, 0 }, { row - 1, -1 }, { limit = 1 }) > 0
+    local state = on and "enable" or "disable"
+    pcall(vim.cmd, "amenu " .. state .. [[ PopUp.Open\ Scene\ in\ Godot]])
+    pcall(vim.cmd, "amenu " .. state .. [[ PopUp.Change\ Scene…]])
+  end,
+})
+
+vim.api.nvim_create_autocmd({ "BufWinEnter", "FileType", "TextChanged", "InsertLeave" }, {
+  group = group,
+  callback = function(ev)
+    M.request_scene_icons(ev.buf)
+  end,
+})
+-- Buffers already open when this script loaded.
+for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+  M.request_scene_icons(buf)
 end

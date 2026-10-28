@@ -106,10 +106,29 @@ func poll() -> void:
 		exited.emit()
 
 
+## The pipe is non-blocking, and a write the pipe has no room for fails with
+## no way to tell how much of it went through. Writes of at most PIPE_BUF
+## bytes (512 on macOS, more elsewhere) go through whole or not at all, so
+## big messages, such as godot_nvim.lua, go in pieces of that size, each
+## tried again until Neovim has read enough to make room.
+const _PIPE_CHUNK := 512
+
+
 func _send(msg: Array) -> void:
 	if _io == null:
 		return
-	_io.store_buffer(Msgpack.encode(msg))
+	var data := Msgpack.encode(msg)
+	var deadline := Time.get_ticks_msec() + 2000
+	var i := 0
+	while i < data.size():
+		var piece := data if data.size() <= _PIPE_CHUNK else data.slice(i, i + _PIPE_CHUNK)
+		if _io.store_buffer(piece):
+			i += piece.size()
+		elif Time.get_ticks_msec() > deadline or not is_running():
+			push_error("godot_nvim: could not write to Neovim")
+			return
+		else:
+			OS.delay_usec(200)
 	_io.flush()
 
 

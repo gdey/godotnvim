@@ -86,6 +86,8 @@ func _enter_tree() -> void:
 	view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	view.drop_builder = _build_drop
 	view.color_picker_setup = _setup_color_picker
+	view.scene_picker = _pick_scene
+	view.scene_open_requested.connect(_open_scene)
 	view.file_saved.connect(_on_file_saved)
 	view.buffer_entered.connect(func(p: String) -> void:
 		_current_path = p
@@ -255,6 +257,21 @@ func _setup_color_picker(picker: ColorPicker) -> void:
 		es.get_setting("interface/inspector/default_color_picker_mode"))
 	picker.picker_shape = es.get_project_metadata("color_picker", "picker_shape",
 		es.get_setting("interface/inspector/default_color_picker_shape"))
+
+
+# Godot's Quick Open dialog, on scenes.
+func _pick_scene(_current: String, done: Callable) -> void:
+	EditorInterface.popup_quick_open(func(path: String) -> void:
+		if path != "":
+			done.call(ResourceUID.ensure_path(path)), [&"PackedScene"])
+
+
+# Opens the scene and shows it in the 2D or 3D editor, as its root is.
+func _open_scene(path: String) -> void:
+	EditorInterface.open_scene_from_path(path)
+	var root := EditorInterface.get_edited_scene_root()
+	if root and root.scene_file_path == path:
+		EditorInterface.set_main_screen_editor("3D" if root is Node3D else "2D")
 
 
 func _on_file_saved(path: String, breakpoints: Array) -> void:
