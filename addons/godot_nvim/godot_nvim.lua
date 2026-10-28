@@ -1237,6 +1237,18 @@ vim.api.nvim_create_user_command("GodotConnections", M.show_connections,
 -- The project is the folder Godot passed in, not the working directory, which
 -- :cd (or a plugin) can move.
 
+-- Returns the project's .gd files, with forward slashes.
+local function project_scripts()
+  local out = {}
+  for _, f in ipairs(vim.fn.globpath((opts.root or vim.fn.getcwd()):gsub(",", "\\,"), "**/*.gd", false, true)) do
+    f = vim.fs.normalize(f)
+    if not f:match("/%.godot/") then
+      table.insert(out, f)
+    end
+  end
+  return out
+end
+
 -- Returns { file, lnum, name, text } for every func in the project.
 function M.project_funcs()
   local loaded = {}
@@ -1246,15 +1258,12 @@ function M.project_funcs()
     end
   end
   local out = {}
-  for _, f in ipairs(vim.fn.globpath((opts.root or vim.fn.getcwd()):gsub(",", "\\,"), "**/*.gd", false, true)) do
-    f = vim.fs.normalize(f)
-    if not f:match("/%.godot/") then
-      local lines = loaded[f] and vim.api.nvim_buf_get_lines(loaded[f], 0, -1, false) or vim.fn.readfile(f)
-      for i, l in ipairs(lines) do
-        local name = l:match("^%s*func%s+([%w_]+)%s*%(") or l:match("^%s*static%s+func%s+([%w_]+)%s*%(")
-        if name then
-          table.insert(out, { file = f, lnum = i, name = name, text = vim.trim(l) })
-        end
+  for _, f in ipairs(project_scripts()) do
+    local lines = loaded[f] and vim.api.nvim_buf_get_lines(loaded[f], 0, -1, false) or vim.fn.readfile(f)
+    for i, l in ipairs(lines) do
+      local name = l:match("^%s*func%s+([%w_]+)%s*%(") or l:match("^%s*static%s+func%s+([%w_]+)%s*%(")
+      if name then
+        table.insert(out, { file = f, lnum = i, name = name, text = vim.trim(l) })
       end
     end
   end
@@ -1365,6 +1374,15 @@ if bufname(0) ~= "" then
   vim.rpcnotify(chan, "godot_nvim_buf_enter", bufname(0))
 end
 
+local function lsp_config()
+  return {
+    name = "gdscript",
+    cmd = vim.lsp.rpc.connect(opts.lsp.host, opts.lsp.port),
+    root_dir = opts.root,
+    filetypes = { "gdscript" },
+  }
+end
+
 -- Attaches Godot's language server to [buf], unless the user's own config
 -- already handles gdscript. Scheduled so that config's FileType handlers
 -- (vim.lsp.enable, lspconfig) run first and we can see their client.
@@ -1383,12 +1401,7 @@ function M.lsp_attach(buf)
     if #get_clients({ bufnr = buf, name = "gdscript" }) > 0 then
       return
     end
-    vim.lsp.start({
-      name = "gdscript",
-      cmd = vim.lsp.rpc.connect(opts.lsp.host, opts.lsp.port),
-      root_dir = opts.root,
-      filetypes = { "gdscript" },
-    }, { bufnr = buf })
+    vim.lsp.start(lsp_config(), { bufnr = buf })
   end)
 end
 
@@ -1406,6 +1419,135 @@ if opts.lsp then
     end
   end
 end
+
+-- Project errors -------------------------------------------------------------
+-- Godot's language server only reports diagnostics for documents a client has
+-- open, so :GodotErrors opens every project script with it that Neovim
+-- doesn't already have attached, then asks for something. Godot handles
+-- messages in order, so by the reply all the diagnostics are in. The scripts
+-- are then closed again; their diagnostics stay until they change.
+
+local function lsp_client()
+  local get_clients = vim.lsp.get_clients or vim.lsp.get_active_clients
+  return get_clients({ name = "gdscript" })[1]
+end
+
+-- Client methods are called with : from 0.11 and with . before.
+local function client_call(client, method, ...)
+  if vim.fn.has("nvim-0.11") == 1 then
+    return client[method](client, ...)
+  end
+  return client[method](...)
+end
+
+-- Calls [fn] with the gdscript client once it is initialized, starting our
+-- own if there is none. Calls [fn] with nil if there is no language server.
+local function with_lsp_client(fn)
+  local client = lsp_client()
+  if not client and opts.lsp then
+    local id
+    if vim.fn.has("nvim-0.11") == 1 then
+      id = vim.lsp.start(lsp_config(), { attach = false })
+    else
+      id = vim.lsp.start_client(lsp_config())
+    end
+    client = id and vim.lsp.get_client_by_id(id)
+  end
+  if not client then
+    fn(nil)
+    return
+  end
+  local uv = vim.uv or vim.loop
+  local deadline = uv.now() + 5000
+  local function wait()
+    if client.initialized then
+      fn(client)
+    elseif client.is_stopped and client_call(client, "is_stopped") or uv.now() > deadline then
+      fn(nil)
+    else
+      vim.defer_fn(wait, 50)
+    end
+  end
+  wait()
+end
+
+-- Fills the quickfix list with the errors in the project's scripts, and
+-- warnings too with [warnings], and opens it if there are any.
+function M.check_project(warnings)
+  local title = warnings and ":GodotErrors!" or ":GodotErrors"
+  with_lsp_client(function(client)
+    if not client then
+      vim.notify("godot_nvim: :GodotErrors needs Godot's language server (Connect LSP in Editor Settings)",
+        vim.log.levels.WARN)
+      return
+    end
+    local scripts = project_scripts()
+    local opened = {}
+    for _, f in ipairs(scripts) do
+      local buf = vim.fn.bufnr(f)
+      if buf == -1 or not vim.lsp.buf_is_attached(buf, client.id) then
+        local uri = vim.uri_from_fname(f)
+        client_call(client, "notify", "textDocument/didOpen", {
+          textDocument = { uri = uri, languageId = "gdscript", version = 0, text = table.concat(vim.fn.readfile(f), "\n") },
+        })
+        table.insert(opened, f)
+      end
+    end
+
+    local function done()
+      for _, f in ipairs(opened) do
+        local buf = vim.fn.bufnr(f)
+        -- Opened in Neovim meanwhile: Neovim owns it now.
+        if buf == -1 or not vim.lsp.buf_is_attached(buf, client.id) then
+          client_call(client, "notify", "textDocument/didClose", { textDocument = { uri = vim.uri_from_fname(f) } })
+        end
+      end
+      local in_project = {}
+      for _, f in ipairs(scripts) do
+        in_project[f] = true
+      end
+      local diags = vim.tbl_filter(function(d)
+        return in_project[bufname(d.bufnr)]
+      end, vim.diagnostic.get(nil, {
+        namespace = vim.lsp.diagnostic.get_namespace(client.id, false),
+        severity = warnings and { min = vim.diagnostic.severity.WARN } or vim.diagnostic.severity.ERROR,
+      }))
+      table.sort(diags, function(a, b)
+        local fa, fb = bufname(a.bufnr), bufname(b.bufnr)
+        if fa ~= fb then
+          return fa < fb
+        end
+        return a.lnum < b.lnum or (a.lnum == b.lnum and a.col < b.col)
+      end)
+      if #diags == 0 then
+        -- Clear our own earlier list, but leave anyone else's alone.
+        if vim.fn.getqflist({ title = 0 }).title:match("^:GodotErrors") then
+          vim.fn.setqflist({}, "r", { title = title, items = {} })
+          vim.cmd("cclose")
+        end
+        vim.notify(string.format("No %s in %d scripts", warnings and "errors or warnings" or "errors", #scripts))
+        return
+      end
+      vim.fn.setqflist({}, " ", { title = title, items = vim.diagnostic.toqflist(diags) })
+      vim.cmd("botright copen")
+    end
+
+    if #opened == 0 then
+      done()
+      return
+    end
+    client_call(client, "request", "textDocument/documentSymbol",
+      { textDocument = { uri = vim.uri_from_fname(opened[#opened]) } },
+      function()
+        vim.schedule(done)
+      end)
+  end)
+end
+
+vim.api.nvim_create_user_command("GodotErrors", function(o) M.check_project(o.bang) end, {
+  bang = true,
+  desc = "List the errors (with !, also warnings) in all of the project's scripts in the quickfix list",
+})
 
 M.pending = nil
 

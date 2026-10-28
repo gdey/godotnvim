@@ -22,6 +22,7 @@ func _init() -> void:
 	await _test_session()
 	await _test_clean()
 	await _test_scene_tabs()
+	await _test_project_errors()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
 	quit(1 if _failures else 0)
 
@@ -902,3 +903,138 @@ func _test_scene_tabs() -> void:
 	view.stop()
 	check(not FileAccess.file_exists(session.get_basename() + ".scenes.json"), "no scene links saved when off")
 	view.queue_free()
+
+
+## A stand-in for Godot's language server: reports a line with "ERROR" as an
+## error and one with "WARN" as a warning, and records what is opened.
+class FakeLsp:
+	var server := TCPServer.new()
+	var peer: StreamPeerTCP
+	var buf := PackedByteArray()
+	var open := {} # uri -> true
+	var opened := []
+	var closed := []
+	var double_open := false
+
+	func listen() -> int:
+		server.listen(0, "127.0.0.1")
+		return server.get_local_port()
+
+	func poll() -> void:
+		if peer == null and server.is_connection_available():
+			peer = server.take_connection()
+		if peer == null:
+			return
+		peer.poll()
+		var n := peer.get_available_bytes()
+		if n > 0:
+			buf.append_array(peer.get_data(n)[1])
+		while true:
+			var text := buf.get_string_from_ascii()
+			var head_end := text.find("\r\n\r\n")
+			if head_end < 0:
+				return
+			var length := text.substr(0, head_end).get_slice("Content-Length: ", 1).to_int()
+			if buf.size() < head_end + 4 + length:
+				return
+			var body := buf.slice(head_end + 4, head_end + 4 + length).get_string_from_utf8()
+			buf = buf.slice(head_end + 4 + length)
+			_handle(JSON.parse_string(body))
+
+	func _send(msg: Dictionary) -> void:
+		msg["jsonrpc"] = "2.0"
+		var body := JSON.stringify(msg).to_utf8_buffer()
+		peer.put_data(("Content-Length: %d\r\n\r\n" % body.size()).to_ascii_buffer() + body)
+
+	func _publish(uri: String, text: String) -> void:
+		var diags := []
+		var lines := text.split("\n")
+		for i in lines.size():
+			for kind in [["ERROR", 1], ["WARN", 2]]:
+				if lines[i].contains(kind[0]):
+					diags.append({"range": {"start": {"line": i, "character": 0}, "end": {"line": i, "character": 1}},
+						"severity": kind[1], "message": kind[0].to_lower() + " here", "source": "gdscript"})
+		_send({"method": "textDocument/publishDiagnostics", "params": {"uri": uri, "diagnostics": diags}})
+
+	func _handle(msg: Dictionary) -> void:
+		var method: String = msg.get("method", "")
+		var params: Dictionary = msg.get("params", {}) if msg.get("params") is Dictionary else {}
+		match method:
+			"initialize":
+				_send({"id": msg.id, "result": {"capabilities": {"textDocumentSync": 1, "documentSymbolProvider": true}}})
+			"textDocument/didOpen":
+				var uri: String = params.textDocument.uri
+				double_open = double_open or open.has(uri)
+				open[uri] = true
+				opened.append(uri.get_file())
+				_publish(uri, params.textDocument.text)
+			"textDocument/didChange":
+				_publish(params.textDocument.uri, params.contentChanges[-1].text)
+			"textDocument/didClose":
+				open.erase(params.textDocument.uri)
+				closed.append(params.textDocument.uri.get_file())
+			_:
+				if msg.has("id"):
+					_send({"id": msg.id, "result": [] if method == "textDocument/documentSymbol" else null})
+
+
+## :GodotErrors opens every script with the language server and lists the
+## errors in the quickfix list.
+func _test_project_errors() -> void:
+	print("project errors")
+	var cwd := OS.get_cache_dir().path_join("godot nvim errors")
+	_remove_dir(cwd)
+	DirAccess.make_dir_recursive_absolute(cwd.path_join("sub"))
+	FileAccess.open(cwd.path_join("good.gd"), FileAccess.WRITE).store_string("extends Node\n")
+	FileAccess.open(cwd.path_join("sub/bad.gd"), FileAccess.WRITE).store_string("extends Node\nERROR\n\nERROR\n")
+	FileAccess.open(cwd.path_join("warn.gd"), FileAccess.WRITE).store_string("extends Node # WARN\n")
+	var lsp := FakeLsp.new()
+	var view := NvimView.new()
+	view.nvim_path = _nvim_path()
+	view.nvim_args = PackedStringArray(["--clean", "-n"])
+	view.working_dir = cwd
+	view.lsp_port = lsp.listen()
+	view.size = Vector2(800, 400)
+	root.add_child(view)
+	view.start()
+	check(await _wait(func(): return view.attached and view.grid.height > 0), "errors view attached")
+	await _req(view, "nvim_eval", ["1"])
+	var qf_lua := "local wins = vim.tbl_filter(function(w) return vim.fn.getwininfo(w)[1].quickfix == 1 end, vim.api.nvim_list_wins()) return {vim.fn.getqflist({title = 0}).title, vim.tbl_map(function(i) return vim.fn.fnamemodify(vim.fn.bufname(i.bufnr), ':t') .. ':' .. i.lnum .. ':' .. i.type end, vim.fn.getqflist()), #wins}"
+	var run := func(cmd: String, want_closed: int) -> Array:
+		view.rpc.request("nvim_command", [cmd])
+		var all_closed := func():
+			lsp.poll()
+			return lsp.closed.size() >= want_closed
+		await _wait(all_closed, 5000)
+		# The quickfix list is filled once the closes are sent.
+		for i in 5:
+			lsp.poll()
+			await _req(view, "nvim_eval", ["1"])
+		var r: Array = await _req(view, "nvim_exec_lua", [qf_lua, []])
+		return r[1] if r[1] is Array else []
+	var got: Array = await run.call("GodotErrors", 3)
+	var files := lsp.opened.duplicate()
+	files.sort()
+	check(files == ["bad.gd", "good.gd", "warn.gd"], "every script opened with the language server: %s" % [lsp.opened])
+	check(lsp.open.is_empty(), "and closed again: %s" % [lsp.open])
+	check(got == [":GodotErrors", ["bad.gd:2:E", "bad.gd:4:E"], 1], "errors in the quickfix list, opened: %s" % [got])
+	got = await run.call("GodotErrors!", 6)
+	check(got == [":GodotErrors!", ["bad.gd:2:E", "bad.gd:4:E", "warn.gd:1:W"], 1], "with !, warnings too: %s" % [got])
+	# A script open in Neovim is left to Neovim, which already has it open.
+	view.rpc.request("nvim_command", ["wincmd p"])
+	view.open_file(cwd.path_join("sub/bad.gd"))
+	await _wait(func():
+		lsp.poll()
+		return lsp.open.size() == 1)
+	FileAccess.open(cwd.path_join("sub/bad.gd"), FileAccess.WRITE).store_string("extends Node\n")
+	view.rpc.request("nvim_command", ["edit!"])
+	for i in 10:
+		lsp.poll()
+		await _req(view, "nvim_eval", ["1"])
+	got = await run.call("GodotErrors", 8)
+	check(not lsp.double_open, "no second open of a script Neovim has open")
+	check(lsp.open.size() == 1, "Neovim's own script stays open: %s" % [lsp.open])
+	check(got == [":GodotErrors", [], 0], "no errors: our list emptied and closed: %s" % [got])
+	view.stop()
+	view.queue_free()
+	_remove_dir(cwd)

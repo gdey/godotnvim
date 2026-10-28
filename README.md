@@ -325,6 +325,19 @@ exactly but some contain it, they go to the quickfix list instead.
 
 ![Hover docs from Godot's language server](docs/screenshots/lsp-hover.png)
 
+### Errors across the project
+
+Godot's language server only reports errors for files you have open, so
+`:GodotErrors` checks every `.gd` file in the project with it. If there are
+errors, they go to the quickfix list and it opens; if there are none, it says
+so and closes a list it opened before. `:GodotErrors!` lists warnings too.
+Files you have open in Neovim are checked as they are in the buffer, unsaved
+edits included; the rest are read from disk. It needs the language server, so
+Godot's editor has to be running with `godot_nvim/connect_lsp` on (or your own
+`gdscript` client).
+
+<!-- screenshot: docs/screenshots/project-errors.png -->
+
 ## Formatting
 
 GDScript files are formatted when you save them (`:w`, or when Godot saves
@@ -376,7 +389,7 @@ Editor Settings → `godot_nvim/`:
 
 Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 `:GodotRunFile`, `:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
-`:GodotFunc`, `:GodotFormat`, and `:colorscheme godot`.
+`:GodotFunc`, `:GodotErrors`, `:GodotFormat`, and `:colorscheme godot`.
 
 ## Known gaps
 

@@ -12,6 +12,14 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ### Added
 
+- `:GodotErrors` checks every script in the project with Godot's language
+  server and, if any have errors, lists them in the quickfix list and opens
+  it. `:GodotErrors!` lists warnings too. The language server only reports
+  errors for open files, so before this you only saw errors in scripts you
+  had opened.
+
+  <!-- screenshot: docs/screenshots/project-errors.png -->
+
 - The Signals dock's **Go to Method** (right-click a connection) and
   double-clicking a connection open the connected method in Neovim, where
   they used to open Godot's script editor. The method is found in Neovim's
