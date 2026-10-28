@@ -19,6 +19,10 @@ The release workflow turns a version's section into its GitHub release notes.
 
   ![Go to Method jumps to the connected method in Neovim](docs/screenshots/signals-go-to-method.gif)
 
+- A project website, [gdey.github.io/godotnvim](https://gdey.github.io/godotnvim/),
+  with the features, install steps, the README as documentation and this
+  changelog.
+
 ### Fixed
 
 - The addon is no longer exported with your game. Its scripts were included

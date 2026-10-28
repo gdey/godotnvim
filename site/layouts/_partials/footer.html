@@ -1,0 +1,13 @@
+<footer class="site-footer">
+  <div class="wrap">
+    <p>
+      {{ site.Title }} is MIT licensed.
+      <a href="{{ site.Params.repo }}">Source on GitHub</a> ·
+      <a href="{{ site.Params.repo }}/issues">Issues</a> ·
+      <a href="{{ site.Params.repo }}/releases">Releases</a>
+    </p>
+    {{- with .Params.repoFile }}
+    <p class="muted">This page is <a href="{{ site.Params.repo }}/blob/{{ site.Params.branch }}/{{ . }}"><code>{{ . }}</code></a> in the repository. <a href="{{ site.Params.repo }}/edit/{{ site.Params.branch }}/{{ . }}">Edit it on GitHub</a>.</p>
+    {{- end }}
+  </div>
+</footer>

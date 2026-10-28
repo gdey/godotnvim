@@ -15,6 +15,8 @@ an embedded Neovim, drawn inside the editor with Neovim's UI protocol
 
 Your Neovim config, plugins and keymaps load as usual.
 
+Website: [gdey.github.io/godotnvim](https://gdey.github.io/godotnvim/)
+
 ![Neovim tab with breakpoint, override and signal signs in the editor's colors](docs/screenshots/overview.png)
 
 ## Requirements
@@ -419,6 +421,29 @@ NVIM=/path/to/nvim godot --headless --path . -s tests/run_tests.gd
 Add `--editor` to also test running an `EditorScript`, which only the editor
 can do. The first run in a fresh checkout needs `godot --headless --path . --editor --quit`
 first, so Godot registers the addon's `class_name`s.
+
+## Website
+
+[gdey.github.io/godotnvim](https://gdey.github.io/godotnvim/) is a
+[Hugo](https://gohugo.io/) site in `site/`. Its Docs, Changelog, vim2godot
+and API wishlist pages are this README, `CHANGELOG.md`,
+`colorscheme/README.md` and `docs/godot-api-wishlist.md`, mounted as they
+are, so edit those files rather than copies. Only the home page lives in
+`site/`: its text in `site/content/_index.md` and its feature cards, which
+use the Asset Store screenshots in `docs/store/`, in
+`site/data/features.yaml`. Relative links and images in the Markdown are
+rewritten to the matching page or screenshot, or to the file on GitHub.
+
+To preview it, install Hugo 0.168 or newer and run, from the repository root:
+
+```sh
+hugo server --source site
+```
+
+The Pages workflow builds and publishes it on every push to `main` that
+touches the site or the files it shows.
+
+![The website's home page](docs/screenshots/website.png)
 
 ## Releasing
 

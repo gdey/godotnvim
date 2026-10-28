@@ -1,0 +1,13 @@
+{{- /* Images in the repository Markdown, resolved like links. */ -}}
+{{- $dest := .Destination }}
+{{- $u := urls.Parse $dest }}
+{{- if and (not $u.Scheme) (not (hasPrefix $dest "/")) }}
+  {{- $p := path.Join (.Page.Params.repoDir | default ".") $u.Path }}
+  {{- if hasPrefix $p "docs/" }}
+    {{- $dest = relURL $p }}
+  {{- else }}
+    {{- $dest = printf "%s/raw/%s/%s" site.Params.repo site.Params.branch $p }}
+  {{- end }}
+{{- end -}}
+<img src="{{ $dest | safeURL }}" alt="{{ .PlainText }}" loading="lazy"{{ with .Title }} title="{{ . }}"{{ end }}>
+{{- /* chomp */ -}}
