@@ -86,8 +86,11 @@ func _enter_tree() -> void:
 	view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	view.drop_builder = _build_drop
 	view.color_picker_setup = _setup_color_picker
-	view.scene_picker = _pick_scene
-	view.scene_open_requested.connect(_open_scene)
+	view.resource_picker = _pick_resource
+	view.resource_type = func(path: String) -> String:
+		return EditorInterface.get_resource_filesystem().get_file_type(path)
+	view.resource_icon = _resource_icon
+	view.resource_open_requested.connect(_open_resource)
 	view.file_saved.connect(_on_file_saved)
 	view.buffer_entered.connect(func(p: String) -> void:
 		_current_path = p
@@ -259,19 +262,51 @@ func _setup_color_picker(picker: ColorPicker) -> void:
 		es.get_setting("interface/inspector/default_color_picker_shape"))
 
 
-# Godot's Quick Open dialog, on scenes.
-func _pick_scene(_current: String, done: Callable) -> void:
+# Godot's Quick Open dialog, on files of [param type].
+func _pick_resource(_current: String, type: String, done: Callable) -> void:
 	EditorInterface.popup_quick_open(func(path: String) -> void:
 		if path != "":
-			done.call(ResourceUID.ensure_path(path)), [&"PackedScene"])
+			done.call(ResourceUID.ensure_path(path)), [StringName(type)])
 
 
-# Opens the scene and shows it in the 2D or 3D editor, as its root is.
-func _open_scene(path: String) -> void:
-	EditorInterface.open_scene_from_path(path)
-	var root := EditorInterface.get_edited_scene_root()
-	if root and root.scene_file_path == path:
-		EditorInterface.set_main_screen_editor("3D" if root is Node3D else "2D")
+# The file type's icon, as the FileSystem dock shows it, then a preview for
+# the types that have one (images, materials, meshes, ...). Missing files
+# get the broken-file icon.
+func _resource_icon(path: String, set_icon: Callable) -> void:
+	var theme := EditorInterface.get_editor_theme()
+	if not FileAccess.file_exists(path):
+		set_icon.call(theme.get_icon(&"FileBroken", &"EditorIcons"))
+		return
+	var type := EditorInterface.get_resource_filesystem().get_file_type(path)
+	var name := StringName(type if type != "" else ResourceLiteral.guess_type(path))
+	set_icon.call(theme.get_icon(name, &"EditorIcons") if theme.has_icon(name, &"EditorIcons") else theme.get_icon(&"File", &"EditorIcons"))
+	if ClassDB.is_parent_class(name, &"Texture2D"):
+		EditorInterface.get_resource_previewer().queue_resource_preview(path, self, &"_on_icon_preview", set_icon)
+
+
+func _on_icon_preview(_path: String, preview: Texture2D, small: Texture2D, set_icon: Callable) -> void:
+	if preview:
+		set_icon.call(preview)
+	elif small:
+		set_icon.call(small)
+
+
+# Opens a scene in the 2D or 3D editor, as its root is, and anything else as
+# the FileSystem dock does: scripts and text in Neovim, other resources in
+# the Inspector.
+func _open_resource(path: String) -> void:
+	if EditorInterface.get_resource_filesystem().get_file_type(path) == "PackedScene":
+		EditorInterface.open_scene_from_path(path)
+		var root := EditorInterface.get_edited_scene_root()
+		if root and root.scene_file_path == path:
+			EditorInterface.set_main_screen_editor("3D" if root is Node3D else "2D")
+		return
+	EditorInterface.get_file_system_dock().navigate_to_path(path)
+	if ResourceLoader.exists(path):
+		EditorInterface.edit_resource(load(path))
+	else:
+		# Plain text the editor doesn't load, such as .txt or .md.
+		view.open_file(path)
 
 
 func _on_file_saved(path: String, breakpoints: Array) -> void:
