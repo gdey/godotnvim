@@ -18,7 +18,7 @@ The release workflow turns a version's section into its GitHub release notes.
   errors for open files, so before this you only saw errors in scripts you
   had opened.
 
-  <!-- screenshot: docs/screenshots/project-errors.png -->
+  ![:GodotErrors lists errors from scripts that aren't open](docs/screenshots/project-errors.png)
 
 - The Signals dock's **Go to Method** (right-click a connection) and
   double-clicking a connection open the connected method in Neovim, where

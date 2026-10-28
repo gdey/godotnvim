@@ -336,7 +336,7 @@ edits included; the rest are read from disk. It needs the language server, so
 Godot's editor has to be running with `godot_nvim/connect_lsp` on (or your own
 `gdscript` client).
 
-<!-- screenshot: docs/screenshots/project-errors.png -->
+![:GodotErrors lists errors from player.gd and enemy.gd in the quickfix list while hud.gd is open](docs/screenshots/project-errors.png)
 
 ## Formatting
 

@@ -53,6 +53,9 @@ usual.
   references, rename and completion.
 - `:GodotFunc <name>` jumps to a function anywhere in the project, with name
   completion. Godot's language server has no project-wide symbol search.
+- `:GodotErrors` checks every script in the project and lists the errors in
+  the quickfix list (`:GodotErrors!` adds warnings). Godot's language server
+  only reports errors for files you have open.
 
 **Debugger**
 
@@ -259,4 +262,4 @@ only the Neovim tab (a `-neovim` editor profile).
 - Screenshots: `overview.webp`, `drag-and-drop.webp`, `lsp-hover.webp`,
   `function-search.webp`, `format-on-save.webp`, `editor-profiles.webp`,
   `inspector-drop.webp`, `run-file.webp`, `session-restore.webp`,
-  `scene-tabs.webp`, `signals-go-to-method.webp`
+  `scene-tabs.webp`, `signals-go-to-method.webp`, `project-errors.webp`
