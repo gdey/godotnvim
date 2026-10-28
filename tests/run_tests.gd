@@ -12,6 +12,7 @@ func _init() -> void:
 	_test_msgpack()
 	_test_keys()
 	_test_drop_text()
+	_test_color_literal()
 	_test_overrides()
 	_test_editor_profiles()
 	_test_find_executable()
@@ -19,6 +20,7 @@ func _init() -> void:
 	_test_export()
 	await _test_embed()
 	await _test_view_drop()
+	await _test_view_colors()
 	await _test_session()
 	await _test_clean()
 	await _test_scene_tabs()
@@ -177,6 +179,38 @@ func _test_drop_text() -> void:
 	check(DropText.build({"type": "obj_property"}, main, main, false, true).is_empty(), "ignores property drag without a property")
 	check(DropText.build({"type": "resource"}, main, main, false, true).is_empty(), "ignores other drags")
 	main.queue_free()
+
+
+func _test_color_literal() -> void:
+	print("color literal")
+	var cases := [
+		["Color(1, 0, 0)", Color(1, 0, 0), ColorLiteral.Mode.RGB],
+		["Color(1, 0.5, 0, 0.25)", Color(1, 0.5, 0, 0.25), ColorLiteral.Mode.RGB],
+		["Color()", Color(), ColorLiteral.Mode.RGB],
+		["Color(\"#ff8000\")", Color("#ff8000"), ColorLiteral.Mode.STRING],
+		["Color('red')", Color.RED, ColorLiteral.Mode.STRING],
+		["Color(0xff8000ff)", Color("#ff8000"), ColorLiteral.Mode.HEX],
+		["Color.from_hsv(0.5, 1, 1)", Color.from_hsv(0.5, 1, 1), ColorLiteral.Mode.HSV],
+		["Color.from_ok_hsl(0.5, 1, 0.5, 1)", Color.from_ok_hsl(0.5, 1, 0.5), ColorLiteral.Mode.OKHSL],
+		["Color.from_rgba8(255, 128, 0)", Color.from_rgba8(255, 128, 0), ColorLiteral.Mode.RGB8],
+		["Color.DARK_GREEN", Color.DARK_GREEN, ColorLiteral.Mode.RGB],
+	]
+	for c in cases:
+		var line: String = "var c := %s # x" % c[0]
+		var lits := ColorLiteral.parse(line)
+		check(lits.size() == 1 and lits[0]["start"] == 9 and lits[0]["end"] == 8 + c[0].length()
+			and lits[0]["color"].is_equal_approx(c[1]) and lits[0]["mode"] == c[2], "parse %s: %s" % [c[0], lits])
+	for bad in ["Color(a, 0, 0)", "Colors(1, 0, 0)", "my_Color(1, 0, 0)", "Color.ABC", "Color.lerp(x)", "Color.NOPE", "Color(1, 0)"]:
+		check(ColorLiteral.parse(bad).is_empty(), "not a literal: %s" % bad)
+	var two := "lerp(Color.RED, Color(0, 0, 1), t)"
+	var lits := ColorLiteral.parse(two)
+	check(lits.size() == 2 and lits[0]["end"] == 13 and lits[1]["start"] == 16, "two literals on a line: %s" % [lits])
+	check(ColorLiteral.at(two, 20)["start"] == 16 and ColorLiteral.at(two, 14).is_empty(), "literal at a column")
+	var f := ColorLiteral.forms(Color(1, 0.5, 0, 1))
+	check(f[0] == "Color(1, 0.5, 0, 1)" and f[1] == "Color(\"ff8000ff\")" and f[4] == "Color.from_rgba8(255, 128, 0, 255)"
+		and f[5] == "Color(0xff8000ff)", "forms: %s" % [f])
+	var u := "# é: Color(1, 0, 0)"
+	check(ColorLiteral.byte_col(u, 5) == 6 and ColorLiteral.char_col(u, 6) == 5, "byte and character columns")
 
 
 func _test_editor_profiles() -> void:
@@ -564,6 +598,57 @@ func _test_view_drop() -> void:
 	view.stop()
 	if had_swap:
 		check(not FileAccess.file_exists(swap[1]), "swap file removed on stop")
+	view.queue_free()
+
+
+func _test_view_colors() -> void:
+	print("view colors")
+	var view := NvimView.new()
+	view.nvim_path = _nvim_path()
+	view.nvim_args = PackedStringArray(["--clean", "-n"])
+	view.size = Vector2(800, 400)
+	root.add_child(view)
+	check(view.start() == OK, "view starts nvim")
+	check(await _wait(func(): return view.attached and view.entered), "view entered")
+	var path := OS.get_cache_dir().path_join("godot_nvim_colors.gd")
+	FileAccess.open(path, FileAccess.WRITE).store_string("extends Node\n\nvar a := Color(1, 0, 0)\nvar b := Color.BLUE\n")
+	view.open_file(path)
+	var swatch_lua := "local ns = vim.api.nvim_get_namespaces().godot_nvim_colors local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns, 0, -1, {details = true})) do table.insert(r, {m[2], m[3], m[4].virt_text[1][2]}) end return r"
+	var got := []
+	var marks_ready := func() -> bool:
+		got = view.rpc.request_sync("nvim_exec_lua", [swatch_lua, []])
+		return got[0] == null and got[1].size() == 2
+	var has_swatches: bool = await _wait(marks_ready)
+	check(has_swatches and got[1] == [[2, 9, "GodotColor_ff0000"], [3, 9, "GodotColor_0000ff"]], "a swatch before each literal: %s" % [got])
+	# :GodotColor on the second literal opens the picker; a pick rewrites it.
+	view.rpc.request("nvim_win_set_cursor", [0, [4, 12]])
+	view.rpc.request("nvim_command", ["GodotColor"])
+	check(await _wait(func(): return view._color_popup != null and view._color_popup.visible), "picker opens on the literal")
+	if view._color_popup:
+		check(view._color_popup.picker.color == Color.BLUE, "picker starts at the literal's color")
+		view._color_popup.picker.color = Color(0, 1, 0)
+		view._color_popup.picker.color_changed.emit(Color(0, 1, 0))
+		view._color_popup.forms.select(ColorLiteral.Mode.STRING)
+		view._color_popup.forms.item_selected.emit(ColorLiteral.Mode.STRING)
+		var line := []
+		var rewritten := func() -> bool:
+			line = view.rpc.request_sync("nvim_exec_lua", ["return vim.fn.getline(4)", []])
+			return line[1] == "var b := Color(\"00ff00ff\")"
+		check(await _wait(rewritten), "picks rewrite the literal: %s" % [line])
+		view._color_popup.hide()
+		view.rpc.request("nvim_command", ["undo"])
+		line = view.rpc.request_sync("nvim_exec_lua", ["return vim.fn.getline(4)", []])
+		check(line[1] == "var b := Color.BLUE", "one undo takes back every pick: %s" % [line])
+	# Not on a literal: a warning, no picker.
+	view.rpc.request("nvim_win_set_cursor", [0, [1, 0]])
+	view.rpc.request("nvim_command", ["GodotColor"])
+	var msg := []
+	var warned := func() -> bool:
+		msg = view.rpc.request_sync("nvim_exec_lua", ["return vim.trim(vim.fn.execute('1messages'))", []])
+		return msg[1] != ""
+	check(await _wait(warned) and msg[1] == "godot_nvim: no Color literal under the cursor", "warns off a literal: %s" % [msg])
+	view.rpc.request("nvim_command", ["silent edit!"])
+	view.stop()
 	view.queue_free()
 
 

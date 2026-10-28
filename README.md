@@ -290,6 +290,33 @@ it for Linux, macOS and Windows.
 
 ![cendre, converted from Vim, in the Godot script editor](docs/screenshots/colorscheme-cendre.png)
 
+## Color picker
+
+Like Godot's script editor, a swatch (`■`) in the color sits before each
+`Color` literal in a `.gd` buffer. Clicking the swatch, `:GodotColor`, or
+`gC` in normal mode with the cursor on the literal opens Godot's color
+picker below it. Each pick rewrites the literal, and one `u` undoes all the
+picks you made while the picker was open. The list under the sliders chooses
+how the color is written: `Color(r, g, b, a)`, `Color("rrggbbaa")`,
+`Color.from_hsv(...)`, `Color.from_ok_hsl(...)`, `Color.from_rgba8(...)` or
+`Color(0xrrggbbaa)`. The picker starts in the mode and shape you last used
+in the editor's color pickers.
+
+![The color picker opened on Color(0.2, 0.6, 1, 1) in Neovim, with swatches before each Color literal](docs/screenshots/color-picker.png)
+
+The picker works on the literals Godot's picker does: `Color(r, g, b[, a])`,
+`Color("#hex")` or `Color("name")`, `Color(0xRRGGBBAA)`, `Color()`,
+`Color.from_hsv`, `Color.from_ok_hsl`, `Color.from_rgba8` with number
+arguments, and constants such as `Color.RED`. To pick a color for a `Color`
+variable with no value yet, type `Color()` and open the picker on it. A
+color built from variables or expressions, such as `Color(r, g, 0)`, has no
+swatch and no picker, since a pick would overwrite the expression.
+
+Set `vim.g.godot_nvim_color_key` to another key, or to `false` for none, and
+`vim.g.godot_nvim_color_swatch` to another glyph. `vim.g.godot_nvim_color_swatches
+= false` turns the swatches off. Swatches need Neovim 0.10 or newer;
+`:GodotColor` works on 0.9 too.
+
 ## Language server
 
 The plugin connects `.gd` buffers to the GDScript language server that the
@@ -391,7 +418,7 @@ Editor Settings → `godot_nvim/`:
 
 Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 `:GodotRunFile`, `:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
-`:GodotFunc`, `:GodotErrors`, `:GodotFormat`, and `:colorscheme godot`.
+`:GodotFunc`, `:GodotErrors`, `:GodotFormat`, `:GodotColor`, and `:colorscheme godot`.
 
 ## Known gaps
 
@@ -417,7 +444,9 @@ Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 | `nvim_view.gd` | Control that draws the grid and sends keyboard, mouse and drops to Neovim |
 | `nvim_keys.gd` | Turns Godot key events into Neovim key notation |
 | `drop_text.gd` | Builds the text for dropped nodes, files and Inspector properties |
-| `godot_nvim.lua` | Neovim side: save and buffer notifications, `:q` handling, sessions, drop insertion, breakpoint, signal and override signs, LSP setup, run commands |
+| `color_literal.gd` | Finds `Color` literals in GDScript and writes picked colors the ways Godot's picker does |
+| `color_popup.gd` | The `:GodotColor` color picker popup |
+| `godot_nvim.lua` | Neovim side: save and buffer notifications, `:q` handling, sessions, drop insertion, breakpoint, signal and override signs, color swatches, LSP setup, run commands |
 | `theme_colors.gd` | Reads the script editor's colors for Neovim's `godot` colorscheme |
 | `nvim/colors/godot.lua` | The `godot` colorscheme (needs the colors from the editor) |
 | `debugger_bridge.gd` | EditorDebuggerPlugin: forwards the debugger's go-to-line and breakpoint events |

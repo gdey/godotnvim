@@ -85,6 +85,7 @@ func _enter_tree() -> void:
 	view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	view.drop_builder = _build_drop
+	view.color_picker_setup = _setup_color_picker
 	view.file_saved.connect(_on_file_saved)
 	view.buffer_entered.connect(func(p: String) -> void:
 		_current_path = p
@@ -244,6 +245,16 @@ func _build_drop(data: Variant, modifier: bool) -> Dictionary:
 			script_node = DropText.find_script_node(root, script)
 	var hints: bool = EditorInterface.get_editor_settings().get_setting("text_editor/completion/add_type_hints")
 	return DropText.build(data, root, script_node, modifier, hints)
+
+
+# As the editor sets up its own color pickers: the project's last mode and
+# shape, else the Editor Settings defaults.
+func _setup_color_picker(picker: ColorPicker) -> void:
+	var es := EditorInterface.get_editor_settings()
+	picker.color_mode = es.get_project_metadata("color_picker", "color_mode",
+		es.get_setting("interface/inspector/default_color_picker_mode"))
+	picker.picker_shape = es.get_project_metadata("color_picker", "picker_shape",
+		es.get_setting("interface/inspector/default_color_picker_shape"))
 
 
 func _on_file_saved(path: String, breakpoints: Array) -> void:

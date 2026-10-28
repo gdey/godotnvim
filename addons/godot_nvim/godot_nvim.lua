@@ -1601,3 +1601,143 @@ function M.drop()
   end
 end
 
+
+-- Color literals: a swatch before each one, as Godot's script editor draws,
+-- and :GodotColor to open Godot's color picker on the one under the cursor.
+-- Godot finds the literals (color_literal.gd); request_swatches sends it the
+-- lines that may have one and it answers with set_swatches.
+
+local color_ns = vim.api.nvim_create_namespace("godot_nvim_colors")
+-- Inline virtual text needs Neovim 0.10; on 0.9 there are no swatches, but
+-- :GodotColor still works.
+local inline_virt = vim.fn.has("nvim-0.10") == 1
+
+function M.request_swatches(buf)
+  if not inline_virt or vim.g.godot_nvim_color_swatches == false
+    or not vim.api.nvim_buf_is_loaded(buf) or vim.bo[buf].filetype ~= "gdscript" then
+    return
+  end
+  local lines = {}
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+    if l:find("Color", 1, true) then
+      table.insert(lines, { i - 1, l })
+    end
+  end
+  if #lines == 0 and not vim.b[buf].godot_nvim_swatches then
+    return
+  end
+  vim.rpcnotify(chan, "godot_nvim_colors", buf, vim.api.nvim_buf_get_changedtick(buf), lines)
+end
+
+-- swatches: { row, start byte, end byte (exclusive), "rrggbb" } for buf at
+-- changedtick tick. A stale answer is dropped; a newer request is on its way.
+function M.set_swatches(buf, tick, swatches)
+  if not vim.api.nvim_buf_is_loaded(buf) or vim.api.nvim_buf_get_changedtick(buf) ~= tick then
+    return
+  end
+  vim.api.nvim_buf_clear_namespace(buf, color_ns, 0, -1)
+  vim.b[buf].godot_nvim_swatches = #swatches > 0
+  local glyph = vim.g.godot_nvim_color_swatch or "■"
+  for _, s in ipairs(swatches) do
+    -- Set every time: a colorscheme change clears it.
+    local hl = "GodotColor_" .. s[4]
+    vim.api.nvim_set_hl(0, hl, { fg = "#" .. s[4] })
+    vim.api.nvim_buf_set_extmark(buf, color_ns, s[1], s[2], {
+      end_col = s[3],
+      virt_text = { { glyph, hl }, { " " } },
+      virt_text_pos = "inline",
+      right_gravity = false,
+    })
+  end
+end
+
+-- Opens Godot's color picker on the Color literal under the cursor.
+function M.pick_color()
+  local win = vim.api.nvim_get_current_win()
+  local buf = vim.api.nvim_win_get_buf(win)
+  local row, col = unpack(vim.api.nvim_win_get_cursor(win))
+  local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
+  local pos = vim.fn.screenpos(win, row, col + 1)
+  if pos.row == 0 then
+    return
+  end
+  vim.rpcnotify(chan, "godot_nvim_pick_color", buf, row - 1, line, col, pos.row - 1, pos.col - 1)
+end
+
+-- The changedtick after the color picker's last write, so the next pick
+-- joins it into one undo step.
+local color_tick = {}
+
+-- Replaces old_text at row, col of buf with new_text, if it is still there.
+function M.replace_color(buf, row, col, old_text, new_text)
+  if not vim.api.nvim_buf_is_loaded(buf) then
+    return false
+  end
+  local line = vim.api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ""
+  if line:sub(col + 1, col + #old_text) ~= old_text then
+    return false
+  end
+  vim.api.nvim_buf_call(buf, function()
+    if color_tick[buf] == vim.api.nvim_buf_get_changedtick(buf) then
+      pcall(vim.cmd.undojoin)
+    end
+    vim.api.nvim_buf_set_text(buf, row, col, row, col + #old_text, { new_text })
+  end)
+  color_tick[buf] = vim.api.nvim_buf_get_changedtick(buf)
+  M.request_swatches(buf)
+  return true
+end
+
+-- A click on a swatch: the cursor lands on the literal's first character,
+-- to the right of where the mouse is.
+function M.swatch_click()
+  local pos = vim.fn.getmousepos()
+  if pos.winid ~= vim.api.nvim_get_current_win() or pos.line == 0 then
+    return
+  end
+  local buf = vim.api.nvim_win_get_buf(pos.winid)
+  local row, col = unpack(vim.api.nvim_win_get_cursor(pos.winid))
+  if row ~= pos.line then
+    return
+  end
+  local marks = vim.api.nvim_buf_get_extmarks(buf, color_ns, { row - 1, col }, { row - 1, col }, {})
+  if #marks == 0 then
+    return
+  end
+  local sp = vim.fn.screenpos(pos.winid, row, col + 1)
+  if pos.screencol < sp.col then
+    M.pick_color()
+  end
+end
+
+vim.api.nvim_create_user_command("GodotColor", M.pick_color,
+  { desc = "Open Godot's color picker on the Color literal under the cursor" })
+
+vim.api.nvim_create_autocmd({ "BufWinEnter", "FileType", "TextChanged", "InsertLeave" }, {
+  group = group,
+  callback = function(ev)
+    M.request_swatches(ev.buf)
+  end,
+})
+
+vim.api.nvim_create_autocmd("FileType", {
+  group = group,
+  pattern = "gdscript",
+  callback = function(ev)
+    local key = vim.g.godot_nvim_color_key
+    if key == nil then
+      key = "gC"
+    end
+    if key and key ~= "" and vim.fn.maparg(key, "n") == "" then
+      vim.keymap.set("n", key, M.pick_color, { buffer = ev.buf, desc = "Pick a color for the Color literal" })
+    end
+    if inline_virt and vim.fn.maparg("<LeftRelease>", "n") == "" then
+      vim.keymap.set("n", "<LeftRelease>", "<LeftRelease><Cmd>lua godot_nvim.swatch_click()<CR>",
+        { buffer = ev.buf, desc = "Open Godot's color picker from a color swatch" })
+    end
+  end,
+})
+-- Buffers already open when this script loaded.
+for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+  M.request_swatches(buf)
+end
