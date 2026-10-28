@@ -639,6 +639,16 @@ func _test_view_colors() -> void:
 		view.rpc.request("nvim_command", ["undo"])
 		line = view.rpc.request_sync("nvim_exec_lua", ["return vim.fn.getline(4)", []])
 		check(line[1] == "var b := Color.BLUE", "one undo takes back every pick: %s" % [line])
+	# A click on a swatch opens the picker too.
+	if view._color_popup:
+		view._color_popup.hide()
+	view.rpc.request("nvim_command", ["set mouse=a"])
+	var sp: Array = await _req(view, "nvim_exec_lua", ["return vim.fn.screenpos(0, 3, 10)", []])
+	for action in ["press", "release"]:
+		view.rpc.request("nvim_input_mouse", ["left", action, "", 0, sp[1]["row"] - 1, sp[1]["col"] - 1])
+	check(await _wait(func(): return view._color_popup != null and view._color_popup.visible), "a click on a swatch opens the picker: %s" % [sp])
+	if view._color_popup:
+		view._color_popup.hide()
 	# Not on a literal: a warning, no picker.
 	view.rpc.request("nvim_command", ["messages clear"])
 	view.rpc.request("nvim_win_set_cursor", [0, [1, 0]])

@@ -1704,8 +1704,9 @@ function M.swatch_click()
   if #marks == 0 then
     return
   end
+  -- col is where the swatch starts; curscol is the literal's own cell.
   local sp = vim.fn.screenpos(pos.winid, row, col + 1)
-  if pos.screencol < sp.col then
+  if pos.screencol < sp.curscol then
     M.pick_color()
   end
 end
