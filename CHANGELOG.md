@@ -12,14 +12,16 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ### Added
 
-- Scene icons for scene paths, like the color swatches. An icon sits before
-  each `preload`, `load` or `ResourceLoader.load` of a `.tscn` or `.scn`
-  file (`res://`, `uid://` or relative). Double-clicking it or `:GodotScene`
-  opens the scene in Godot; `:GodotScenePick` picks another scene in Godot's
-  Quick Open dialog and replaces the path. Both are also in Neovim's
-  right-click menu.
+- Icons for resource paths, like the color swatches. Before each `preload`,
+  `load` or `ResourceLoader.load` path (`res://`, `uid://` or relative) sits
+  the file's FileSystem icon, or the image itself for textures.
+  Double-clicking it or `:GodotOpenResource` opens the file: a scene in
+  Godot's 2D or 3D editor, a script in Neovim, anything else in the
+  Inspector. `:GodotPickResource` picks another file of the same kind in
+  Godot's Quick Open dialog and replaces the path. Both are also in
+  Neovim's right-click menu.
 
-  ![Scene icons before the preload and load calls of .tscn files in Neovim](docs/screenshots/scene-icons.png)
+  ![Icons and image previews before preload calls in Neovim](docs/screenshots/resource-icons.png)
 
 - A color picker for `Color` literals, like the script editor's. A swatch in
   the color sits before each literal; clicking it, `:GodotColor` or `gC`
@@ -50,6 +52,8 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ### Fixed
 
+- `:GodotRunScene` with an image or other imported file ran it as a scene
+  instead of warning that it is not one.
 - The addon is no longer exported with your game. Its scripts were included
   in every export, though nothing loaded them; an export plugin now skips
   everything under `addons/godot_nvim/` while the plugin is enabled.

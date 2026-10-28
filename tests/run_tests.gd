@@ -13,7 +13,7 @@ func _init() -> void:
 	_test_keys()
 	_test_drop_text()
 	_test_color_literal()
-	_test_scene_literal()
+	_test_resource_literal()
 	_test_overrides()
 	_test_editor_profiles()
 	_test_find_executable()
@@ -22,7 +22,7 @@ func _init() -> void:
 	await _test_embed()
 	await _test_view_drop()
 	await _test_view_colors()
-	await _test_view_scenes()
+	await _test_view_resources()
 	await _test_session()
 	await _test_clean()
 	await _test_scene_tabs()
@@ -215,7 +215,7 @@ func _test_color_literal() -> void:
 	check(ColorLiteral.byte_col(u, 5) == 6 and ColorLiteral.char_col(u, 6) == 5, "byte and character columns")
 
 
-func _test_scene_literal() -> void:
+func _test_resource_literal() -> void:
 	print("scene literal")
 	var script := "res://tests/fixtures/sample.gd"
 	var cases := [
@@ -228,21 +228,27 @@ func _test_scene_literal() -> void:
 	]
 	for c in cases:
 		var line: String = "const S := %s # x" % c[0]
-		var lits := SceneLiteral.parse(line, script)
+		var lits := ResourceLiteral.parse(line, script)
 		check(lits.size() == 1 and lits[0]["start"] == 11 and lits[0]["end"] == line.find(")")
 			and line.substr(lits[0]["path_start"], lits[0]["path_end"] - lits[0]["path_start"]) == lits[0]["path"]
-			and SceneLiteral.resolve(lits[0]["path"], script) == c[1], "parse %s: %s" % [c[0], lits])
-	for bad in ["preload(\"res://icon.svg\")", "reload(\"res://a.tscn\")", "my.load(\"res://a.tscn\")",
+			and ResourceLiteral.resolve(lits[0]["path"], script) == c[1], "parse %s: %s" % [c[0], lits])
+	for ok in ["load(\"res://icon.svg\")", "preload(\"res://hero.tres\")", "load(\"util.gd\")"]:
+		check(ResourceLiteral.parse(ok, script).size() == 1, "any file: %s" % ok)
+	for bad in ["preload(\"res://dir/\")", "load(\"res://noext\")", "reload(\"res://a.tscn\")", "my.load(\"res://a.tscn\")",
 			"preload(path)", "preload(\"uid://nope\")", "load(\"a.tscn\")"]:
-		check(SceneLiteral.parse(bad).is_empty(), "not a scene path: %s" % bad)
+		check(ResourceLiteral.parse(bad).is_empty(), "not a resource path: %s" % bad)
 	var two := "var a := [preload(\"res://a.tscn\"), load(\"res://b.tscn\")]"
-	var lits := SceneLiteral.parse(two)
+	var lits := ResourceLiteral.parse(two)
 	check(lits.size() == 2 and lits[1]["path"] == "res://b.tscn", "two on a line: %s" % [lits])
-	check(SceneLiteral.at(two, 12)["path"] == "res://a.tscn" and SceneLiteral.at(two, 33)["path"] == "res://b.tscn"
-		and SceneLiteral.at(two, 5)["path"] == "res://a.tscn" and SceneLiteral.at(two, 55).is_empty(), "path at or after a column")
-	check(SceneLiteral.write_as("uid://dtcw6ovtjqs4o", "res://tests/fixtures/other.tscn") == "uid://bwbm1earrcmnw"
-		and SceneLiteral.write_as("res://a.tscn", "res://tests/fixtures/other.tscn") == "res://tests/fixtures/other.tscn",
+	check(ResourceLiteral.at(two, 12)["path"] == "res://a.tscn" and ResourceLiteral.at(two, 33)["path"] == "res://b.tscn"
+		and ResourceLiteral.at(two, 5)["path"] == "res://a.tscn" and ResourceLiteral.at(two, 55).is_empty(), "path at or after a column")
+	check(ResourceLiteral.write_as("uid://dtcw6ovtjqs4o", "res://tests/fixtures/other.tscn") == "uid://bwbm1earrcmnw"
+		and ResourceLiteral.write_as("res://a.tscn", "res://tests/fixtures/other.tscn") == "res://tests/fixtures/other.tscn",
 		"picks keep uid:// paths uid://")
+	check(ResourceLiteral.guess_type("res://a.PNG") == "Texture2D" and ResourceLiteral.guess_type("res://a.xyz") == "Resource", "types by extension")
+	check(ResourceLiteral.pick_base("CompressedTexture2D") == "Texture2D" and ResourceLiteral.pick_base("AudioStreamOggVorbis") == "AudioStream"
+		and ResourceLiteral.pick_base("GDScript") == "Script" and ResourceLiteral.pick_base("StandardMaterial3D") == "Material"
+		and ResourceLiteral.pick_base("Curve") == "Curve", "Quick Open types")
 
 
 func _test_editor_profiles() -> void:
@@ -695,66 +701,75 @@ func _test_view_colors() -> void:
 	view.queue_free()
 
 
-func _test_view_scenes() -> void:
-	print("view scenes")
+func _test_view_resources() -> void:
+	print("view resources")
 	var view := NvimView.new()
 	view.nvim_path = _nvim_path()
 	view.nvim_args = PackedStringArray(["--clean", "-n"])
 	view.size = Vector2(800, 400)
 	var opened := []
-	view.scene_open_requested.connect(func(p: String) -> void: opened.append(p))
+	view.resource_open_requested.connect(func(p: String) -> void: opened.append(p))
 	var picks := []
-	view.scene_picker = func(current: String, done: Callable) -> void:
-		picks.append(current)
+	view.resource_picker = func(current: String, type: String, done: Callable) -> void:
+		picks.append([current, type])
 		done.call("res://tests/fixtures/other.tscn")
+	var icon := PlaceholderTexture2D.new()
+	view.resource_icon = func(_path: String, set_icon: Callable) -> void: set_icon.call(icon)
 	root.add_child(view)
 	check(view.start() == OK, "view starts nvim")
 	check(await _wait(func(): return view.attached and view.entered), "view entered")
-	var path := OS.get_cache_dir().path_join("godot_nvim_scenes.gd")
-	FileAccess.open(path, FileAccess.WRITE).store_string("extends Node\n\nconst A := preload(\"res://tests/fixtures/scene.tscn\")\nvar b = load(\"uid://dtcw6ovtjqs4o\")\nvar c := preload(\"res://icon.svg\")\n")
+	var path := OS.get_cache_dir().path_join("godot_nvim_resources.gd")
+	FileAccess.open(path, FileAccess.WRITE).store_string("extends Node\n\nconst A := preload(\"res://tests/fixtures/scene.tscn\")\nvar b = load(\"uid://dtcw6ovtjqs4o\")\nvar c := preload(\"res://tests/fixtures/sample.gd\")\nvar d = 1\n")
 	view.open_file(path)
 	view.rpc.request("nvim_command", ["setfiletype gdscript"])
-	var icon_lua := "local ns = vim.api.nvim_get_namespaces().godot_nvim_scenes local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns, 0, -1, {details = true})) do table.insert(r, {m[2], m[3], m[4].virt_text[1][1]}) end return r"
+	var icon_lua := "local ns = vim.api.nvim_get_namespaces().godot_nvim_resources local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns, 0, -1, {details = true})) do table.insert(r, {m[2], m[3], m[4].virt_text[1][1]}) end return r"
 	var got := []
 	var marks_ready := func() -> bool:
 		got.assign(view.rpc.request_sync("nvim_exec_lua", [icon_lua, []]))
-		return got[0] == null and got[1].size() == 2
+		return got[0] == null and got[1].size() == 3
 	var has_icons: bool = await _wait(marks_ready)
-	check(has_icons and got[1] == [[2, 11, NvimView.SCENE_ICON + " "], [3, 8, NvimView.SCENE_ICON + " "]], "an icon before each scene path: %s" % [got])
-	# :GodotScene opens the scene, by res:// or uid:// path.
+	var scene_ch := char(NvimView.ICON_BASE + view._icon_chars.keys().find("res://tests/fixtures/scene.tscn"))
+	var gd_ch := char(NvimView.ICON_BASE + view._icon_chars.keys().find("res://tests/fixtures/sample.gd"))
+	check(has_icons and got[1] == [[2, 11, scene_ch + " "], [3, 8, scene_ch + " "], [4, 9, gd_ch + " "]] and scene_ch != gd_ch,
+		"an icon before each path, one per file: %s" % [got])
+	check(view._icon_textures.get(scene_ch) == icon, "icons come from resource_icon")
+	# :GodotOpenResource opens the file, by res:// or uid:// path.
 	view.rpc.request("nvim_win_set_cursor", [0, [4, 20]])
-	view.rpc.request("nvim_command", ["GodotScene"])
-	check(await _wait(func(): return opened == ["res://tests/fixtures/scene.tscn"]), "opens the scene: %s" % [opened])
+	view.rpc.request("nvim_command", ["GodotOpenResource"])
+	check(await _wait(func(): return opened == ["res://tests/fixtures/scene.tscn"]), "opens the file: %s" % [opened])
 	# A double-click on the icon does too.
 	view.rpc.request("nvim_command", ["set mouse=a"])
-	var sp: Array = await _req(view, "nvim_exec_lua", ["return vim.fn.screenpos(0, 3, 12)", []])
+	var sp: Array = await _req(view, "nvim_exec_lua", ["return vim.fn.screenpos(0, 5, 10)", []])
 	for i in 2:
 		for action in ["press", "release"]:
 			view.rpc.request("nvim_input_mouse", ["left", action, "", 0, sp[1]["row"] - 1, sp[1]["col"] - 1])
-	check(await _wait(func(): return opened.size() == 2), "a double-click on the icon opens the scene: %s" % [opened])
-	# :GodotScenePick replaces the path; a uid:// path stays one.
+	check(await _wait(func(): return opened.size() == 2 and opened[1] == "res://tests/fixtures/sample.gd"), "a double-click on the icon opens the file: %s" % [opened])
+	# :GodotPickResource replaces the path; a uid:// path stays one.
 	view.rpc.request("nvim_win_set_cursor", [0, [4, 0]])
-	view.rpc.request("nvim_command", ["GodotScenePick"])
+	view.rpc.request("nvim_command", ["GodotPickResource"])
 	var line := []
 	var rewritten := func() -> bool:
 		line.assign(view.rpc.request_sync("nvim_exec_lua", ["return vim.fn.getline(4)", []]))
 		return line[1] == "var b = load(\"uid://bwbm1earrcmnw\")"
-	check(await _wait(rewritten) and picks == ["res://tests/fixtures/scene.tscn"], "a pick replaces the path: %s %s" % [line, picks])
+	check(await _wait(rewritten) and picks == [["res://tests/fixtures/scene.tscn", "PackedScene"]], "a pick replaces the path: %s %s" % [line, picks])
 	view.rpc.request("nvim_win_set_cursor", [0, [3, 0]])
-	view.rpc.request("nvim_command", ["GodotScenePick"])
+	view.rpc.request("nvim_command", ["GodotPickResource"])
 	rewritten = func() -> bool:
 		line.assign(view.rpc.request_sync("nvim_exec_lua", ["return vim.fn.getline(3)", []]))
 		return line[1] == "const A := preload(\"res://tests/fixtures/other.tscn\")"
 	check(await _wait(rewritten), "a res:// path stays one: %s" % [line])
-	# Not a scene: a warning.
-	view.rpc.request("nvim_command", ["messages clear"])
 	view.rpc.request("nvim_win_set_cursor", [0, [5, 0]])
-	view.rpc.request("nvim_command", ["GodotScene"])
+	view.rpc.request("nvim_command", ["GodotPickResource"])
+	check(await _wait(func(): return picks.size() == 3 and picks[2][1] == "Script"), "picks offer the file's type: %s" % [picks])
+	# No path: a warning.
+	view.rpc.request("nvim_command", ["messages clear"])
+	view.rpc.request("nvim_win_set_cursor", [0, [6, 0]])
+	view.rpc.request("nvim_command", ["GodotOpenResource"])
 	var msg := []
 	var warned := func() -> bool:
 		msg.assign(view.rpc.request_sync("nvim_exec_lua", ["return vim.trim(vim.fn.execute('1messages'))", []]))
 		return msg[1] != ""
-	check(await _wait(warned) and msg[1] == "godot_nvim: no scene path under the cursor", "warns off a scene path: %s" % [msg])
+	check(await _wait(warned) and msg[1] == "godot_nvim: no resource path under the cursor", "warns off a path: %s" % [msg])
 	view.rpc.request("nvim_command", ["silent edit!"])
 	view.stop()
 	view.queue_free()

@@ -317,28 +317,40 @@ Set `vim.g.godot_nvim_color_key` to another key, or to `false` for none, and
 = false` turns the swatches off. Swatches need Neovim 0.10 or newer;
 `:GodotColor` works on 0.9 too.
 
-## Scene paths
+## Resource paths
 
-A scene icon sits before each `preload`, `load` or `ResourceLoader.load`
-of a `.tscn` or `.scn` file in a `.gd` buffer, whether the path is
-`res://`, `uid://` or relative to the script. Double-clicking the icon, or
-`:GodotScene` with the cursor on the line, opens the scene in Godot and
-switches to the 2D or 3D editor.
+An icon sits before each `preload`, `load` or `ResourceLoader.load` of a
+file in a `.gd` buffer, whether the path is `res://`, `uid://` or relative
+to the script. It is the icon the FileSystem dock shows for the file: the
+image itself for textures, the scene icon for scenes, the script icon for
+scripts, and a broken-file icon when the file is missing.
 
-![Scene icons before the preload and load calls of .tscn files in Neovim](docs/screenshots/scene-icons.png)
+![Icons before preload calls in Neovim: scene icons, a resource and a script icon, and previews of three images](docs/screenshots/resource-icons.png)
 
-`:GodotScenePick` opens Godot's Quick Open dialog on scenes, and the scene
-you pick replaces the path. A `uid://` path stays a `uid://` path; any
-other path is written as `res://`. One `u` undoes it. Right-clicking a line
-with a scene path also offers **Open Scene in Godot** and **Change Scene…**
-in Neovim's popup menu (with `mouse` on and the default `mousemodel`).
+Double-clicking the icon, or `:GodotOpenResource` with the cursor on the
+line, opens the file as a double-click in the FileSystem dock would:
 
-![Godot's Quick Open dialog on scenes, opened with :GodotScenePick on a preload in Neovim](docs/screenshots/scene-pick.png)
+- a scene opens in Godot, which switches to the 2D or 3D editor;
+- a script, shader or other text file opens in Neovim;
+- anything else (a `.tres`, a texture, a sound, a font) opens in the
+  Inspector, with its preview or player, and is selected in the FileSystem
+  dock.
 
-`vim.g.godot_nvim_scene_icons = false` turns the icons off, and
-`vim.g.godot_nvim_scene_icon` shows another glyph instead. Quick Open lists
-only scenes with a UID, which Godot gives every scene it saves. Icons need
-Neovim 0.10 or newer; the commands work on 0.9 too.
+`:GodotPickResource` opens Godot's Quick Open dialog on files of the same
+kind (any texture for a texture, any scene for a scene, any sound for a
+sound), and the file you pick replaces the path. A `uid://` path stays a
+`uid://` path; any other path is written as `res://`. One `u` undoes it.
+Right-clicking a line with a path also offers **Open Resource** and
+**Change Resource…** in Neovim's popup menu (with `mouse` on and the
+default `mousemodel`).
+
+![Godot's Quick Open dialog on textures, opened with :GodotPickResource on a preload in Neovim](docs/screenshots/resource-pick.png)
+
+`vim.g.godot_nvim_resource_icons = false` turns the icons off, and
+`vim.g.godot_nvim_resource_icon` shows that glyph instead of the icons.
+Quick Open lists only files with a UID, which Godot gives every file it
+imports or saves. Icons need Neovim 0.10 or newer; the commands work on
+0.9 too.
 
 ## Language server
 
@@ -441,8 +453,8 @@ Editor Settings → `godot_nvim/`:
 
 Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 `:GodotRunFile`, `:GodotPause`, `:GodotStop`, `:GodotToggleBreakpoint`, `:GodotConnections`,
-`:GodotFunc`, `:GodotErrors`, `:GodotFormat`, `:GodotColor`, `:GodotScene`,
-`:GodotScenePick`, and `:colorscheme godot`.
+`:GodotFunc`, `:GodotErrors`, `:GodotFormat`, `:GodotColor`, `:GodotOpenResource`,
+`:GodotPickResource`, and `:colorscheme godot`.
 
 ## Known gaps
 
@@ -470,8 +482,8 @@ Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 | `drop_text.gd` | Builds the text for dropped nodes, files and Inspector properties |
 | `color_literal.gd` | Finds `Color` literals in GDScript and writes picked colors the ways Godot's picker does |
 | `color_popup.gd` | The `:GodotColor` color picker popup |
-| `scene_literal.gd` | Finds scene paths in `preload`/`load` calls in GDScript |
-| `godot_nvim.lua` | Neovim side: save and buffer notifications, `:q` handling, sessions, drop insertion, breakpoint, signal and override signs, color swatches, scene icons, LSP setup, run commands |
+| `resource_literal.gd` | Finds resource paths in `preload`/`load` calls in GDScript |
+| `godot_nvim.lua` | Neovim side: save and buffer notifications, `:q` handling, sessions, drop insertion, breakpoint, signal and override signs, color swatches, resource icons, LSP setup, run commands |
 | `theme_colors.gd` | Reads the script editor's colors for Neovim's `godot` colorscheme |
 | `nvim/colors/godot.lua` | The `godot` colorscheme (needs the colors from the editor) |
 | `debugger_bridge.gd` | EditorDebuggerPlugin: forwards the debugger's go-to-line and breakpoint events |
