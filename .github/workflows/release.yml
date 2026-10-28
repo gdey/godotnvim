@@ -15,6 +15,9 @@ permissions:
 
 env:
   GODOT_VERSION: 4.7.1
+  # Ubuntu's neovim package is older than the plugin supports (0.11+), and
+  # the swatches and resource icons need 0.10+, so use an upstream build.
+  NVIM_VERSION: 0.11.4
 
 jobs:
   release:
@@ -34,8 +37,9 @@ jobs:
 
       - name: Install Neovim and Godot
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q neovim
+          curl -sSLo nvim.tar.gz "https://github.com/neovim/neovim/releases/download/v${NVIM_VERSION}/nvim-linux-x86_64.tar.gz"
+          tar xzf nvim.tar.gz
+          echo "$PWD/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
           curl -sSLo godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
           unzip -q godot.zip
           echo "GODOT=$PWD/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
