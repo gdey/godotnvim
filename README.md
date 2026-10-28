@@ -445,6 +445,11 @@ touches the site or the files it shows.
 
 ![The website's home page](docs/screenshots/website.png)
 
+Further down, the home page has the same treatment for vim2godot, with a
+download button for each platform, built from the version in `plugin.cfg`:
+
+![The vim2godot section of the home page](docs/screenshots/website-vim2godot.png)
+
 ## Releasing
 
 Bump `version` in `addons/godot_nvim/plugin.cfg` and add a section for it to

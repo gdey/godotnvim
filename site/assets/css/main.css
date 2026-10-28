@@ -98,6 +98,24 @@ code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
 .button.primary:hover { background: #3d7aa8; }
 .button.ghost { border-color: transparent; }
 
+/* vim2godot: the hero treatment again, further down the page */
+.hero-alt { margin-top: 72px; background: linear-gradient(160deg, #241f33 0%, #1f2430 55%, #1c2a2a 100%); }
+.hero-alt h2 { font-size: clamp(1.6rem, 3.5vw, 2.4rem); line-height: 1.15; margin: 0 0 16px; letter-spacing: -0.02em; }
+.hero-alt .hero-inner { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+.hero-alt .hero-shot { order: -1; }
+.hero .lead a { color: #9cc9ee; }
+.eyebrow { margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.75rem; font-weight: 700; color: #a99ce0; }
+.downloads { display: grid; gap: 10px; margin: 24px 0 8px; }
+.download { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.download-os { width: 76px; font-weight: 600; color: #c3ccd6; }
+.download .button { padding: 7px 14px; font-size: 0.9rem; }
+
+.gallery { display: grid; gap: 20px; }
+.gallery figure { margin: 0; }
+.gallery figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
+.split pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.5; }
+.split pre code { background: none; padding: 0; }
+
 /* Sections */
 .section { padding: 64px 16px 0; }
 .section h2 { font-size: 1.75rem; letter-spacing: -0.01em; margin: 0 0 8px; }
@@ -176,6 +194,8 @@ code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
 @media (max-width: 860px) {
   .hero { padding: 36px 0 44px; }
   .hero-inner, .split { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .hero-alt .hero-inner { grid-template-columns: minmax(0, 1fr); }
+  .hero-alt .hero-shot { order: 0; }
   .doc-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; padding-top: 20px; }
   .toc { position: static; max-height: none; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
   .toc details:not([open]) summary { margin-bottom: 0; }
