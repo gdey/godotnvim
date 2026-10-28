@@ -124,6 +124,20 @@ files you had open come back either way, and turning the setting off again
 returns to where you were. Arguments in `godot_nvim/nvim_args` are still
 passed after `--clean`.
 
+### Telling your config it runs inside Godot
+
+The plugin sets `vim.g.godot_nvim = true` before your config loads, so your
+config can tell the Neovim inside Godot from your other ones. For example, to
+keep lazy.nvim's update checker running but stop it listing plugin updates
+each time Godot starts:
+
+```lua
+require("lazy").setup({
+  -- ...
+  checker = { enabled = true, notify = not vim.g.godot_nvim },
+})
+```
+
 ## Scene tabs
 
 Each scene open in Godot's scene tabs gets its own Neovim tab page. Switching
@@ -359,6 +373,11 @@ Godot editor runs (host and port come from Editor Settings →
 `network/language_server/remote_host` / `remote_port`, default
 `127.0.0.1:6005`). This gives hover docs (including the engine class
 reference), go-to-definition, references, rename and completion.
+
+Godot starts its language server only once the editor has finished loading,
+which is usually after Neovim has opened your files, so the plugin waits for
+the server to take connections before it attaches. If it still isn't
+answering after two minutes, you get one warning.
 
 If your own config already sets up a `gdscript` client (`vim.lsp.enable("gdscript")`
 or nvim-lspconfig), the plugin leaves it alone and uses yours. To turn the

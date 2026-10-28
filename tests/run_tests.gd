@@ -27,8 +27,44 @@ func _init() -> void:
 	await _test_clean()
 	await _test_scene_tabs()
 	await _test_project_errors()
+	await _test_lsp_late_start()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
 	quit(1 if _failures else 0)
+
+
+## Godot's language server starts after Neovim has opened the session's
+## files: the plugin waits for it instead of failing to connect.
+func _test_lsp_late_start() -> void:
+	print("lsp late start")
+	var cwd := OS.get_cache_dir().path_join("godot nvim late lsp")
+	_remove_dir(cwd)
+	DirAccess.make_dir_recursive_absolute(cwd)
+	FileAccess.open(cwd.path_join("a.gd"), FileAccess.WRITE).store_string("extends Node\n")
+	var lsp := FakeLsp.new()
+	var port := lsp.listen()
+	lsp.server.stop()
+	var view := NvimView.new()
+	view.nvim_path = _nvim_path()
+	view.nvim_args = PackedStringArray(["--clean", "-n"])
+	view.working_dir = cwd
+	view.lsp_port = port
+	view.size = Vector2(800, 400)
+	root.add_child(view)
+	view.start()
+	await _wait(func(): return view.attached and view.grid.height > 0)
+	view.open_file(cwd.path_join("a.gd"))
+	await _wait(func(): return false, 1500)
+	var msgs: Array = await _req(view, "nvim_exec2", ["messages", {"output": true}])
+	check(not str(msgs[1]).contains("Could not connect"), "no connection error while the server is down: %s" % [msgs[1]])
+	var g: Array = await _req(view, "nvim_eval", ["get(g:, 'godot_nvim', v:false)"])
+	check(g[1] == true, "vim.g.godot_nvim set: %s" % [g])
+	lsp.listen(port)
+	check(await _wait(func():
+		lsp.poll()
+		return lsp.opened.has("a.gd"), 5000), "attached once the server is up: %s" % [lsp.opened])
+	view.stop()
+	view.queue_free()
+	_remove_dir(cwd)
 
 
 func check(cond: bool, what: String) -> void:
@@ -1127,16 +1163,23 @@ class FakeLsp:
 	## Godot does for a project reached through a symlink.
 	var rename := {}
 
-	func listen() -> int:
-		server.listen(0, "127.0.0.1")
+	func listen(port := 0) -> int:
+		server.listen(port, "127.0.0.1")
 		return server.get_local_port()
 
 	func poll() -> void:
+		if peer != null:
+			peer.poll()
+			# The plugin checks that the port is up with a connection it
+			# closes again: drop that one for the next.
+			if peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+				peer = null
+				buf.clear()
 		if peer == null and server.is_connection_available():
 			peer = server.take_connection()
-		if peer == null:
+			peer.poll()
+		if peer == null or peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 			return
-		peer.poll()
 		var n := peer.get_available_bytes()
 		if n > 0:
 			buf.append_array(peer.get_data(n)[1])
