@@ -29,6 +29,13 @@
   text: >-
     `:GodotFunc <name>` jumps to a function in any `.gd` file of the project,
     with name completion.
+- title: Errors across the project
+  image: project-errors.webp
+  alt: GodotErrors lists errors from player.gd and enemy.gd in the quickfix list while hud.gd is open
+  docs: errors-across-the-project
+  text: >-
+    `:GodotErrors` checks every script with the language server and opens the
+    quickfix list on the errors, including files you haven't opened.
 - title: Signals and overrides
   image: signals-go-to-method.webp
   alt: Go to Method in the Signals dock jumps to the connected method in Neovim
