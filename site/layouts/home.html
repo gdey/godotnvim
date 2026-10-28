@@ -1,0 +1,117 @@
+{{ define "main" }}
+{{- $version := "" }}
+{{- with hugo.Data.plugin }}{{ $version = .plugin.version }}{{ end }}
+<section class="hero">
+  <div class="wrap hero-inner">
+    <div class="hero-text">
+      <h1>{{ .Params.tagline }}</h1>
+      <div class="lead">{{ .Content }}</div>
+      <div class="actions">
+        <a class="button primary" href="{{ site.Params.repo }}/releases/latest">Download{{ with $version }} v{{ . }}{{ end }}</a>
+        <a class="button" href="{{ "docs/" | relURL }}">Read the docs</a>
+        <a class="button ghost" href="{{ site.Params.repo }}">GitHub</a>
+      </div>
+      <p class="muted small">Godot 4.5+ · Neovim 0.9+ (0.11+ recommended) · Linux and macOS · MIT</p>
+    </div>
+    <figure class="hero-shot">
+      <img src="{{ "docs/store/overview.webp" | relURL }}" width="1600" height="900"
+           alt="The Neovim tab in Godot with breakpoint, override and signal signs in the editor's colors">
+    </figure>
+  </div>
+</section>
+
+<section class="wrap section">
+  <h2>Keeps what Godot's script editor does</h2>
+  <p class="section-lead">Your Neovim config, plugins and keymaps load as usual. Everything below works with them.</p>
+  <div class="features">
+    {{- range hugo.Data.features }}
+    <article class="feature">
+      <a href="{{ printf "docs/#%s" .docs | relURL }}" class="feature-shot">
+        <img src="{{ printf "docs/store/%s" .image | relURL }}" width="1600" height="900" loading="lazy" alt="{{ .alt }}">
+      </a>
+      <h3>{{ .title }}</h3>
+      <p>{{ .text | markdownify }}</p>
+    </article>
+    {{- end }}
+  </div>
+</section>
+
+<section class="wrap section install">
+  <h2>Install</h2>
+  <ol class="steps">
+    <li><span>Install <a href="https://neovim.io/">Neovim</a> 0.9 or newer; 0.11+ is recommended for its default LSP mappings.</span></li>
+    <li><span>Get the plugin from the Asset Library (search for "Neovim Script Editor"), or download <code>godot_nvim-&lt;version&gt;.zip</code> from the <a href="{{ site.Params.repo }}/releases/latest">latest release</a> and copy <code>addons/godot_nvim</code> into your project's <code>addons/</code> folder.</span></li>
+    <li><span>Enable <strong>Neovim Script Editor</strong> under Project → Project Settings → Plugins. A <strong>Neovim</strong> tab appears next to 2D / 3D / Script.</span></li>
+    <li><span>Optional: run Project → Tools → Create Neovim Editor Profiles to hide Godot's Script tab.</span></li>
+  </ol>
+  <p>The <a href="{{ "docs/" | relURL }}">docs</a> cover settings, the debugger, colors, formatting and the known gaps.
+     The <a href="{{ "changelog/" | relURL }}">changelog</a> lists what each release added.</p>
+</section>
+
+<section class="hero hero-alt" id="vim2godot">
+  {{- /* vim2godot is released with the addon, under the same version. */}}
+  {{- $dl := printf "%s/releases/download/v%s" site.Params.repo $version }}
+  <div class="wrap hero-inner">
+    <div class="hero-text">
+      <p class="eyebrow">Also in this repository</p>
+      <h2>vim2godot: any Vim colorscheme as a Godot theme</h2>
+      <div class="lead">
+        <p>A command-line tool that turns a Vim or Neovim colorscheme, such as any on
+           <a href="https://vimcolorschemes.com/">vimcolorschemes.com</a>, into a Godot 4.5+ editor theme:
+           the script editor's colors and the interface around them. It doesn't need the plugin, but with it,
+           Neovim follows the new theme too.</p>
+      </div>
+      {{- if $version }}
+      <div class="downloads" aria-label="Download vim2godot v{{ $version }}">
+        {{- range slice (dict "name" "Linux" "os" "linux" "ext" "tar.gz") (dict "name" "macOS" "os" "darwin" "ext" "tar.gz") (dict "name" "Windows" "os" "windows" "ext" "zip") }}
+        {{- $os := . }}
+        <div class="download">
+          <span class="download-os">{{ .name }}</span>
+          {{- range slice "amd64" "arm64" }}
+          <a class="button{{ if eq . "amd64" }} primary{{ end }}" href="{{ $dl }}/colorscheme-{{ $version }}-{{ $os.os }}-{{ . }}.{{ $os.ext }}">{{ if and (eq $os.os "darwin") (eq . "arm64") }}Apple silicon{{ else if eq $os.os "darwin" }}Intel{{ else }}{{ . }}{{ end }}</a>
+          {{- end }}
+        </div>
+        {{- end }}
+      </div>
+      {{- end }}
+      <div class="actions">
+        <a class="button" href="{{ "colorscheme/" | relURL }}">Read the docs</a>
+        <a class="button ghost" href="{{ site.Params.repo }}/releases/latest">All releases and checksums</a>
+      </div>
+      <p class="muted small">{{ with $version }}v{{ . }} · {{ end }}Needs Neovim 0.10+ and git · Unpack it and put <code>vim2godot</code> on your <code>PATH</code></p>
+    </div>
+    <figure class="hero-shot">
+      <img src="{{ "docs/screenshots/colorscheme-cendre.png" | relURL }}" loading="lazy"
+           alt="The cendre colorscheme, converted from Vim, in the Godot script editor">
+    </figure>
+  </div>
+</section>
+
+<section class="wrap section">
+  <div class="split">
+    <div>
+      <h2>Convert, install, done</h2>
+      <p>Give it a vimcolorschemes.com page, a GitHub repository or a local folder. Each scheme becomes a
+         <code>.tet</code> with the script editor's colors and an <code>apply_&lt;name&gt;.gd</code> that sets the
+         interface colors. Schemes with dark and light variants are written as both.</p>
+      <pre><code>vim2godot https://vimcolorschemes.com/r/aejkatappaja/cendre
+
+# only tokyonight's storm style, installed straight into Godot
+vim2godot -scheme tokyonight-storm -install folke/tokyonight.nvim</code></pre>
+      <p>Then run <code>apply_&lt;name&gt;.gd</code> with File → Run in Godot's script editor.
+         The <a href="{{ "colorscheme/" | relURL }}">vim2godot docs</a> cover every flag and how the colors map.</p>
+      <p class="muted small">It runs the colorscheme's code in a headless Neovim, so only convert schemes you would load in your own editor. On macOS the binary isn't signed; if Gatekeeper blocks it, run <code>xattr -d com.apple.quarantine vim2godot</code>.</p>
+    </div>
+    <div class="gallery">
+      <figure>
+        <img src="{{ "docs/screenshots/colorscheme-gruvbox-light.png" | relURL }}" loading="lazy" alt="gruvbox light, converted, in Godot">
+        <figcaption>gruvbox (light)</figcaption>
+      </figure>
+      <figure>
+        <img src="{{ "docs/screenshots/colorscheme-tokyonight-storm.png" | relURL }}" loading="lazy" alt="tokyonight storm, converted, in Godot">
+        <figcaption>tokyonight-storm</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+{{ end }}

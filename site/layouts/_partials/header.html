@@ -1,0 +1,15 @@
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="{{ "" | relURL }}">
+      <img src="{{ "icon.png" | relURL }}" alt="" width="28" height="28">
+      <span>{{ site.Title }}</span>
+    </a>
+    <nav aria-label="Main">
+      {{- $current := . }}
+      {{- range site.Menus.main }}
+        {{- $active := and .Page (eq .Page $current) }}
+        <a href="{{ .URL }}"{{ if $active }} aria-current="page"{{ end }}>{{ .Name }}</a>
+      {{- end }}
+    </nav>
+  </div>
+</header>

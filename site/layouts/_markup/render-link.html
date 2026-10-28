@@ -1,0 +1,22 @@
+{{- /*
+  Links in the mounted repository Markdown are relative to the file's folder
+  in the repository. Files that are pages of this site link to those pages;
+  screenshots link to their copies here; anything else goes to GitHub.
+*/ -}}
+{{- $dest := .Destination }}
+{{- $u := urls.Parse $dest }}
+{{- if and (not $u.Scheme) (not (hasPrefix $dest "/")) (not (hasPrefix $dest "#")) $u.Path }}
+  {{- $p := path.Join (.Page.Params.repoDir | default ".") $u.Path }}
+  {{- $frag := cond (ne $u.Fragment "") (printf "#%s" $u.Fragment) "" }}
+  {{- $pages := dict "README.md" "docs/" "CHANGELOG.md" "changelog/" "colorscheme/README.md" "colorscheme/" "docs/godot-api-wishlist.md" "wishlist/" }}
+  {{- $page := index $pages $p }}
+  {{- if $page }}
+    {{- $dest = printf "%s%s" (relURL $page) $frag }}
+  {{- else if hasPrefix $p "docs/screenshots/" }}
+    {{- $dest = relURL $p }}
+  {{- else }}
+    {{- $dest = printf "%s/blob/%s/%s%s" site.Params.repo site.Params.branch $p $frag }}
+  {{- end }}
+{{- end -}}
+<a href="{{ $dest | safeURL }}"{{ with .Title }} title="{{ . }}"{{ end }}{{ if strings.HasPrefix $dest "http" }} rel="noopener"{{ end }}>{{ .Text }}</a>
+{{- /* chomp */ -}}

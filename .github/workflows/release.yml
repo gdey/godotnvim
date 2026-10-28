@@ -20,7 +20,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check tag matches plugin.cfg
         run: |
@@ -45,7 +45,7 @@ jobs:
           "$GODOT" --headless --path . --editor --quit
           NVIM=$(command -v nvim) "$GODOT" --headless --path . -s tests/run_tests.gd
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: colorscheme/go.mod
           cache: false

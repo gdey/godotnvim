@@ -1,0 +1,21 @@
+{{ define "main" }}
+<div class="wrap doc-layout{{ if not .TableOfContents }} no-toc{{ end }}">
+  {{- with .TableOfContents }}
+  {{- if ne . `<nav id="TableOfContents"></nav>` }}
+  <aside class="toc">
+    <details open>
+      <summary>On this page</summary>
+      {{ . }}
+    </details>
+  </aside>
+  {{- end }}
+  {{- end }}
+  <article class="prose">
+    {{- /* The repository's Markdown files start with their own h1. */}}
+    {{- if not (strings.HasPrefix (strings.TrimSpace .Content) "<h1") }}
+    <h1>{{ .Params.pageTitle | default .Title }}</h1>
+    {{- end }}
+    {{ .Content }}
+  </article>
+</div>
+{{ end }}
