@@ -616,7 +616,7 @@ func _test_view_colors() -> void:
 	var swatch_lua := "local ns = vim.api.nvim_get_namespaces().godot_nvim_colors local r = {} for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns, 0, -1, {details = true})) do table.insert(r, {m[2], m[3], m[4].virt_text[1][2]}) end return r"
 	var got := []
 	var marks_ready := func() -> bool:
-		got = view.rpc.request_sync("nvim_exec_lua", [swatch_lua, []])
+		got.assign(view.rpc.request_sync("nvim_exec_lua", [swatch_lua, []]))
 		return got[0] == null and got[1].size() == 2
 	var has_swatches: bool = await _wait(marks_ready)
 	check(has_swatches and got[1] == [[2, 9, "GodotColor_ff0000"], [3, 9, "GodotColor_0000ff"]], "a swatch before each literal: %s" % [got])
@@ -632,7 +632,7 @@ func _test_view_colors() -> void:
 		view._color_popup.forms.item_selected.emit(ColorLiteral.Mode.STRING)
 		var line := []
 		var rewritten := func() -> bool:
-			line = view.rpc.request_sync("nvim_exec_lua", ["return vim.fn.getline(4)", []])
+			line.assign(view.rpc.request_sync("nvim_exec_lua", ["return vim.fn.getline(4)", []]))
 			return line[1] == "var b := Color(\"00ff00ff\")"
 		check(await _wait(rewritten), "picks rewrite the literal: %s" % [line])
 		view._color_popup.hide()
@@ -640,11 +640,12 @@ func _test_view_colors() -> void:
 		line = view.rpc.request_sync("nvim_exec_lua", ["return vim.fn.getline(4)", []])
 		check(line[1] == "var b := Color.BLUE", "one undo takes back every pick: %s" % [line])
 	# Not on a literal: a warning, no picker.
+	view.rpc.request("nvim_command", ["messages clear"])
 	view.rpc.request("nvim_win_set_cursor", [0, [1, 0]])
 	view.rpc.request("nvim_command", ["GodotColor"])
 	var msg := []
 	var warned := func() -> bool:
-		msg = view.rpc.request_sync("nvim_exec_lua", ["return vim.trim(vim.fn.execute('1messages'))", []])
+		msg.assign(view.rpc.request_sync("nvim_exec_lua", ["return vim.trim(vim.fn.execute('1messages'))", []]))
 		return msg[1] != ""
 	check(await _wait(warned) and msg[1] == "godot_nvim: no Color literal under the cursor", "warns off a literal: %s" % [msg])
 	view.rpc.request("nvim_command", ["silent edit!"])

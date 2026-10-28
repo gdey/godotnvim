@@ -73,7 +73,8 @@ static func char_col(line: String, col: int) -> int:
 static func _join(values: Array) -> String:
 	var parts := PackedStringArray()
 	for v in values:
-		parts.append(String.num(v, 3))
+		# The shorter 1, not 1.0.
+		parts.append(String.num(v, 3).trim_suffix(".0"))
 	return ", ".join(parts)
 
 

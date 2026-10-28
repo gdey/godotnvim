@@ -19,12 +19,15 @@ func _init() -> void:
 	picker.deferred_mode = true
 	picker.hex_visible = false
 	picker.color_changed.connect(func(_c: Color) -> void: _update_forms(); _write())
-	add_child(picker)
+	var box := VBoxContainer.new()
+	box.add_child(picker)
+	add_child(box)
 	forms.size_flags_horizontal = Control.SIZE_FILL
 	forms.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	forms.fit_to_longest_item = false
 	forms.item_selected.connect(func(_i: int) -> void: _write())
-	picker.get_slider_container().add_sibling(forms)
+	# Below the picker; ColorPicker has no public slot for it.
+	box.add_child(forms)
 
 
 ## Shows the picker on [param lit] (from [method ColorLiteral.at]), whose
