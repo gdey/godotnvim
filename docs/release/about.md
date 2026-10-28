@@ -9,7 +9,11 @@ the parts of Godot's script editor that matter keep working.
   NodePath forms.
 - **Language server:** hover docs, go-to-definition, references, rename and
   completion from Godot's GDScript language server, plus `:GodotFunc` to jump
-  to any function in the project.
+  to any function in the project and `:GodotErrors` to list script errors
+  across it.
+- **Colors and resources:** a swatch before each `Color` literal opens
+  Godot's color picker, and an icon before each `preload` or `load` path
+  opens the file or picks another.
 - **Debugger:** breakpoints show in the gutter and stay in sync with Godot's
   debugger both ways.
 - **Signs:** methods that signals connect to, and methods that override a base

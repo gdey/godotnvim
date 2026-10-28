@@ -10,6 +10,13 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-28
+
+`Color` literals get a swatch that opens Godot's color picker, and resource
+paths get their file's icon, which opens the file or picks another.
+`:GodotErrors` lists script errors from the whole project, and the language
+server now connects reliably when Godot starts.
+
 ### Added
 
 - Icons for resource paths, like the color swatches. Before each `preload`,
@@ -212,6 +219,7 @@ signal and override signs, the editor's colors and the run shortcuts.
 - Asset Library packaging, and a release workflow that publishes the addon
   zip when a version tag is pushed.
 
+[0.5.0]: https://github.com/gdey/godotnvim/releases/tag/v0.5.0
 [0.4.0]: https://github.com/gdey/godotnvim/releases/tag/v0.4.0
 [0.3.0]: https://github.com/gdey/godotnvim/releases/tag/v0.3.0
 [0.2.0]: https://github.com/gdey/godotnvim/releases/tag/v0.2.0
