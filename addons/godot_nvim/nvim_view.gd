@@ -51,6 +51,9 @@ var passthrough_shortcuts: Array[Shortcut] = []
 ## Callable(data: Variant, modifier: bool) -> Dictionary returning what
 ## [method DropText.build] returns. Unset means drops are refused.
 var drop_builder := Callable()
+## Callable(picker: ColorPicker) applying the editor's color picker settings
+## to the :GodotColor picker. Unset leaves the picker's defaults.
+var color_picker_setup := Callable()
 
 var rpc := NvimRpc.new()
 var grid := NvimGrid.new()
@@ -71,6 +74,9 @@ var _pending_open := []
 ## [scenes, closed, current] given to sync_scenes before [member entered].
 var _pending_scenes := []
 var _last_mouse_cell := Vector2i(-1, -1)
+var _color_popup: NvimColorPopup
+## [buf, row, byte column] of the literal the color popup edits.
+var _color_at := []
 
 
 func _init() -> void:
@@ -303,6 +309,10 @@ func _on_notification(method: String, params: Array) -> void:
 				open_file(p[0], p[1], p[2], p[3])
 		"godot_nvim_scene_tab":
 			scene_tab_entered.emit(params[0])
+		"godot_nvim_colors":
+			_send_swatches(params[0], params[1], params[2])
+		"godot_nvim_pick_color":
+			_pick_color(params[0], params[1], params[2], params[3], params[4], params[5])
 		"godot_nvim_buf_enter":
 			if params[0] != "":
 				_last_file = params[0]
@@ -555,3 +565,55 @@ func drop_text_at(cell: Vector2i, res: Dictionary) -> void:
 	# One Lua call: nvim_input is a "fast" API that Neovim acts on before
 	# queued requests, so sending the payload separately would race the input.
 	rpc.request("nvim_exec_lua", ["godot_nvim.queue_drop(...)", [res["kind"], res["text"], cell.y, cell.x]])
+
+
+# --- Colors --------------------------------------------------------------------
+
+## Answers godot_nvim.request_swatches: [param lines] are [row, text] pairs
+## of buffer [param buf] at changedtick [param tick].
+func _send_swatches(buf: int, tick: int, lines: Array) -> void:
+	var swatches := []
+	for l in lines:
+		var text: String = l[1]
+		for lit in ColorLiteral.parse(text):
+			swatches.append([l[0], ColorLiteral.byte_col(text, lit["start"]),
+				ColorLiteral.byte_col(text, lit["end"] + 1), lit["color"].to_html(false)])
+	rpc.request("nvim_exec_lua", ["godot_nvim.set_swatches(...)", [buf, tick, swatches]])
+
+
+## Answers :GodotColor: opens the color picker on the Color literal at byte
+## [param col] of [param line] (0-based [param row] of buffer [param buf]).
+## The cursor is at screen cell [param screen_row], [param screen_col].
+func _pick_color(buf: int, row: int, line: String, col: int, screen_row: int, screen_col: int) -> void:
+	var lit := ColorLiteral.at(line, ColorLiteral.char_col(line, col))
+	if lit.is_empty():
+		notify("godot_nvim: no Color literal under the cursor", 3)
+		return
+	if _color_popup == null:
+		_color_popup = NvimColorPopup.new()
+		_color_popup.picked.connect(_on_color_picked)
+		_color_popup.popup_hide.connect(func() -> void: _color_at = []; grab_focus())
+		add_child(_color_popup)
+	if color_picker_setup.is_valid():
+		color_picker_setup.call(_color_popup.picker)
+	var start := ColorLiteral.byte_col(line, lit["start"])
+	_color_at = [buf, row, start]
+	# The cursor's cell, moved back to the literal's first character. Both
+	# are on one screen line unless the literal wraps.
+	var cells := line.substr(lit["start"], ColorLiteral.char_col(line, col) - lit["start"]).length()
+	var cell := Vector2(maxi(screen_col - cells, 0), screen_row)
+	var rect := Rect2(get_screen_position() + cell * _cell, _cell)
+	_color_popup.open(lit, line.substr(lit["start"], lit["end"] - lit["start"] + 1), rect)
+
+
+func _on_color_picked(old_text: String, new_text: String) -> void:
+	if _color_at.is_empty():
+		return
+	rpc.request("nvim_exec_lua", ["return godot_nvim.replace_color(...)",
+		[_color_at[0], _color_at[1], _color_at[2], old_text, new_text]],
+		func(err: Variant, res: Variant) -> void:
+			if err != null or not res:
+				# The buffer changed under the picker; stop writing to it.
+				_color_at = []
+				if _color_popup:
+					_color_popup.hide())

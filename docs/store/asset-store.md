@@ -77,6 +77,13 @@ usual.
 - **Go to Method** in the Signals dock, or double-clicking a connection,
   opens the connected method in Neovim, even when unsaved edits moved it.
 
+**Colors**
+
+- A swatch before each `Color` literal, as in Godot's script editor.
+  Clicking it, `:GodotColor` or `gC` opens Godot's color picker on the
+  literal; picks rewrite it as `Color(r, g, b, a)`, a hex string, HSV,
+  OKHSL, 8-bit or 0x hex, and one undo takes them back.
+
 **Running**
 
 - Godot's run, pause and stop shortcuts keep working while you type, following
@@ -262,4 +269,5 @@ only the Neovim tab (a `-neovim` editor profile).
 - Screenshots: `overview.webp`, `drag-and-drop.webp`, `lsp-hover.webp`,
   `function-search.webp`, `format-on-save.webp`, `editor-profiles.webp`,
   `inspector-drop.webp`, `run-file.webp`, `session-restore.webp`,
-  `scene-tabs.webp`, `signals-go-to-method.webp`, `project-errors.webp`
+  `scene-tabs.webp`, `signals-go-to-method.webp`, `project-errors.webp`,
+  `color-picker.webp`

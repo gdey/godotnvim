@@ -36,6 +36,13 @@
   text: >-
     `:GodotErrors` checks every script with the language server and opens the
     quickfix list on the errors, including files you haven't opened.
+- title: Color picker
+  image: color-picker.webp
+  alt: Godot's color picker open on a Color literal in Neovim, with swatches before each literal
+  docs: color-picker
+  text: >-
+    Swatches before each `Color` literal, and Godot's color picker on a click,
+    `:GodotColor` or `gC`. Picks rewrite the literal in the form you choose.
 - title: Signals and overrides
   image: signals-go-to-method.webp
   alt: Go to Method in the Signals dock jumps to the connected method in Neovim

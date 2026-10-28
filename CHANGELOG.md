@@ -12,6 +12,14 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ### Added
 
+- A color picker for `Color` literals, like the script editor's. A swatch in
+  the color sits before each literal; clicking it, `:GodotColor` or `gC`
+  opens Godot's color picker there, and each pick rewrites the literal in
+  the form you choose (`Color(r, g, b, a)`, a hex string, HSV, OKHSL, 8-bit
+  or 0x hex). One `u` undoes the picks.
+
+  ![The color picker on a Color literal in Neovim](docs/screenshots/color-picker.png)
+
 - `:GodotErrors` checks every script in the project with Godot's language
   server and, if any have errors, lists them in the quickfix list and opens
   it. `:GodotErrors!` lists warnings too. The language server only reports
