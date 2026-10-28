@@ -1502,12 +1502,17 @@ function M.check_project(warnings)
           client_call(client, "notify", "textDocument/didClose", { textDocument = { uri = vim.uri_from_fname(f) } })
         end
       end
+      -- Godot answers with resolved paths, so a project reached through a
+      -- symlink (/var on macOS is one) comes back under another name.
+      local function real(f)
+        return vim.fs.normalize((vim.uv or vim.loop).fs_realpath(f) or f)
+      end
       local in_project = {}
       for _, f in ipairs(scripts) do
-        in_project[f] = true
+        in_project[real(f)] = true
       end
       local diags = vim.tbl_filter(function(d)
-        return in_project[bufname(d.bufnr)]
+        return in_project[real(bufname(d.bufnr))]
       end, vim.diagnostic.get(nil, {
         namespace = vim.lsp.diagnostic.get_namespace(client.id, false),
         severity = warnings and { min = vim.diagnostic.severity.WARN } or vim.diagnostic.severity.ERROR,

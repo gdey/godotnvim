@@ -915,6 +915,9 @@ class FakeLsp:
 	var opened := []
 	var closed := []
 	var double_open := false
+	## Answers for files under the key's folder as if under the value's, as
+	## Godot does for a project reached through a symlink.
+	var rename := {}
 
 	func listen() -> int:
 		server.listen(0, "127.0.0.1")
@@ -954,6 +957,8 @@ class FakeLsp:
 				if lines[i].contains(kind[0]):
 					diags.append({"range": {"start": {"line": i, "character": 0}, "end": {"line": i, "character": 1}},
 						"severity": kind[1], "message": kind[0].to_lower() + " here", "source": "gdscript"})
+		for from in rename:
+			uri = uri.replace(from, rename[from])
 		_send({"method": "textDocument/publishDiagnostics", "params": {"uri": uri, "diagnostics": diags}})
 
 	func _handle(msg: Dictionary) -> void:
@@ -1038,3 +1043,45 @@ func _test_project_errors() -> void:
 	view.stop()
 	view.queue_free()
 	_remove_dir(cwd)
+	await _test_project_errors_symlink()
+
+
+## A project reached through a symlink: Godot reports diagnostics under the
+## resolved path.
+func _test_project_errors_symlink() -> void:
+	var real := OS.get_cache_dir().path_join("godot nvim errors real")
+	var link := OS.get_cache_dir().path_join("godot nvim errors link")
+	_remove_dir(real)
+	DirAccess.remove_absolute(link)
+	DirAccess.make_dir_recursive_absolute(real)
+	FileAccess.open(real.path_join("bad.gd"), FileAccess.WRITE).store_string("extends Node\nERROR\n")
+	if DirAccess.open(OS.get_cache_dir()).create_link(real, link) != OK:
+		print("  skip symlinked project (can't make a symlink here)")
+		_remove_dir(real)
+		return
+	var lsp := FakeLsp.new()
+	lsp.rename[link.uri_encode().replace("%2F", "/")] = real.uri_encode().replace("%2F", "/")
+	var view := NvimView.new()
+	view.nvim_path = _nvim_path()
+	view.nvim_args = PackedStringArray(["--clean", "-n"])
+	view.working_dir = link
+	view.lsp_port = lsp.listen()
+	view.size = Vector2(800, 400)
+	root.add_child(view)
+	view.start()
+	await _wait(func(): return view.attached and view.grid.height > 0)
+	await _req(view, "nvim_eval", ["1"])
+	view.rpc.request("nvim_command", ["GodotErrors"])
+	var closed := func():
+		lsp.poll()
+		return lsp.closed.size() >= 1
+	await _wait(closed, 5000)
+	for i in 5:
+		lsp.poll()
+		await _req(view, "nvim_eval", ["1"])
+	var got: Array = await _req(view, "nvim_exec_lua", ["return vim.tbl_map(function(i) return vim.fn.fnamemodify(vim.fn.bufname(i.bufnr), ':t') .. ':' .. i.lnum end, vim.fn.getqflist())", []])
+	check(got[1] == ["bad.gd:2"], "symlinked project: errors under the resolved path count: %s" % [got])
+	view.stop()
+	view.queue_free()
+	DirAccess.remove_absolute(link)
+	_remove_dir(real)
