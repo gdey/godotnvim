@@ -28,8 +28,48 @@ func _init() -> void:
 	await _test_scene_tabs()
 	await _test_project_errors()
 	await _test_lsp_late_start()
+	await _test_focus_steal()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
 	quit(1 if _failures else 0)
+
+
+## Saving reloads the file in Godot's script editor, which focuses its
+## hidden text editor; the view takes the focus back. Visible controls keep
+## the focus they take, and a hidden view doesn't take it back.
+func _test_focus_steal() -> void:
+	print("focus steal")
+	var view := NvimView.new()
+	view.size = Vector2(400, 200)
+	root.add_child(view)
+	var hidden := Control.new()
+	hidden.hide()
+	root.add_child(hidden)
+	var code := CodeEdit.new()
+	hidden.add_child(code)
+	var line := LineEdit.new()
+	root.add_child(line)
+
+	view.grab_focus()
+	code.grab_focus()
+	check(code.has_focus(), "hidden editor took the focus: %s" % [root.gui_get_focus_owner()])
+	await process_frame
+	check(view.has_focus(), "view took the focus back from a hidden editor: %s" % [root.gui_get_focus_owner()])
+
+	line.grab_focus()
+	code.grab_focus()
+	await process_frame
+	check(code.has_focus(), "focus moved away from the view stays where it went: %s" % [root.gui_get_focus_owner()])
+
+	view.grab_focus()
+	view.hide()
+	code.grab_focus()
+	await process_frame
+	check(code.has_focus(), "hidden view leaves the focus alone: %s" % [root.gui_get_focus_owner()])
+
+	view.queue_free()
+	hidden.queue_free()
+	line.queue_free()
+	await process_frame
 
 
 ## Godot's language server starts after Neovim has opened the session's
