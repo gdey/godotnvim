@@ -1328,6 +1328,11 @@ func _test_project_errors() -> void:
 		lsp.poll()
 		await _req(view, "nvim_eval", ["1"])
 	got = await run.call("GodotErrors", 8)
+	# edit! may send its own close, so the count above can be reached
+	# before the last of :GodotErrors' closes arrives.
+	await _wait(func():
+		lsp.poll()
+		return lsp.open.size() == 1)
 	check(not lsp.double_open, "no second open of a script Neovim has open")
 	check(lsp.open.size() == 1, "Neovim's own script stays open: %s" % [lsp.open])
 	check(got == [":GodotErrors", [], 0], "no errors: our list emptied and closed: %s" % [got])
