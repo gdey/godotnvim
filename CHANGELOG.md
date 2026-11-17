@@ -18,6 +18,11 @@ swatches and resource icons don't show there.
 
 - Every page now gives the same requirement: Neovim 0.10 or newer, with 0.11+
   recommended. Pull requests now run the tests on Neovim 0.10.0 and 0.11.4.
+- `:w` could leave Neovim without the keyboard on Linux. Saving reloads
+  the file in Godot's hidden script editor, whose text editor took the focus
+  and turned on the window's input method (IME); the view took the focus
+  back but left the IME on. The view now takes the focus back from any hidden
+  control and turns the IME off again.
 
 ## [0.5.0] - 2026-10-28
 

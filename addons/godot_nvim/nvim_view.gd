@@ -96,6 +96,8 @@ var _color_at := []
 var _icon_chars := {}
 ## Icon character -> its Texture2D.
 var _icon_textures := {}
+## The view had the keyboard focus when it last moved to a visible control.
+var _owns_focus := false
 
 ## Each resource path gets a character of its own from Unicode's
 ## supplementary private-use area, from here up, which Neovim shows before
@@ -118,8 +120,39 @@ func _ready() -> void:
 	_update_metrics()
 
 
+func _enter_tree() -> void:
+	get_viewport().gui_focus_changed.connect(_on_focus_changed)
+
+
 func _exit_tree() -> void:
+	get_viewport().gui_focus_changed.disconnect(_on_focus_changed)
 	stop()
+
+
+## Reloading a file in Godot's script editor (on :w, or when Godot's window
+## gets the focus back) focuses its text editor even while that editor is
+## hidden behind this one. Take the focus back, and turn off the IME that
+## the text editor turned on: on Linux an active IME holds the window's
+## keyboard input (on X11 it moves the input focus to a helper window),
+## and this view has no use for it.
+func _on_focus_changed(node: Control) -> void:
+	if not is_instance_valid(node):
+		return
+	if node == self:
+		_owns_focus = true
+	elif node.is_visible_in_tree():
+		_owns_focus = false
+	elif _owns_focus and is_visible_in_tree():
+		_reclaim_focus.call_deferred()
+
+
+func _reclaim_focus() -> void:
+	if not _owns_focus or not is_visible_in_tree():
+		return
+	grab_focus()
+	var wid := get_window().get_window_id()
+	if DisplayServer.has_feature(DisplayServer.FEATURE_IME) and wid != DisplayServer.INVALID_WINDOW_ID:
+		DisplayServer.window_set_ime_active(false, wid)
 
 
 func _process(_delta: float) -> void:
