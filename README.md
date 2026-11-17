@@ -566,7 +566,7 @@ Fixed sections, with a screenshot for each major feature. Commit, then push a
 matching tag:
 
 ```sh
-git tag v0.5.0 && git push origin v0.5.0
+git tag v0.6.0 && git push origin v0.6.0
 ```
 
 The Release workflow checks the tag against `plugin.cfg`, runs the addon's and
