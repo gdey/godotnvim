@@ -1,17 +1,18 @@
 # Runs the tests on pull requests, on the oldest Neovim the plugin supports
-# and on the one the release is tested with.
+# and on the one the release is tested with. On the godot-4.8 branch it also
+# runs on Godot 4.8 (see .github/workflows/sync-godot-4.8.yml on main), on
+# pushes there too.
 name: Tests
 
 on:
   pull_request:
+  push:
+    branches: [godot-4.8]
   workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    # A Godot pre-release may break things the next one fixes; report it
-    # without failing the PR.
-    continue-on-error: ${{ !endsWith(matrix.godot, '-stable') }}
     strategy:
       fail-fast: false
       matrix:
