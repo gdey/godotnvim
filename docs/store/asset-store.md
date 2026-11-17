@@ -132,7 +132,8 @@ usual.
 
 - Project → Tools → Create Neovim Editor Profiles makes copies of your editor
   feature profiles with the Script tab hidden, so Neovim is the only script
-  editor, and offers to switch to one.
+  editor, and offers to switch to one. Attach, Extend and Detach Script stay
+  in the Scene dock with the Script tab hidden.
 
 ## Requirements
 
