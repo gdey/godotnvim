@@ -22,7 +22,9 @@ swatches and resource icons don't show there.
   the file in Godot's hidden script editor, whose text editor took the focus
   and turned on the window's input method (IME); the view took the focus
   back but left the IME on. The view now takes the focus back from any hidden
-  control and turns the IME off again.
+  control and turns the IME off again. Thanks to
+  [@MagnuStaltus](https://github.com/MagnuStaltus) for reporting it and testing
+  the fix ([#43](https://github.com/gdey/godotnvim/issues/43)).
 
 ## [0.5.0] - 2026-10-28
 
