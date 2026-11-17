@@ -1244,6 +1244,12 @@ class FakeLsp:
 	## Answers for files under the key's folder as if under the value's, as
 	## Godot does for a project reached through a symlink.
 	var rename := {}
+	## Every connection and message, oldest first, for a failing test to
+	## print: "<msec> <what> [<file>]".
+	var log := []
+
+	func _log(what: String, uri := "") -> void:
+		log.append("%d %s %s" % [Time.get_ticks_msec(), what, uri.get_file()])
 
 	func listen(port := 0) -> int:
 		server.listen(port, "127.0.0.1")
@@ -1255,11 +1261,13 @@ class FakeLsp:
 			# The plugin checks that the port is up with a connection it
 			# closes again: drop that one for the next.
 			if peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+				_log("disconnected, %d bytes unread" % buf.size())
 				peer = null
 				buf.clear()
 		if peer == null and server.is_connection_available():
 			peer = server.take_connection()
 			peer.poll()
+			_log("connected")
 		if peer == null or peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 			return
 		var n := peer.get_available_bytes()
@@ -1278,6 +1286,8 @@ class FakeLsp:
 			_handle(JSON.parse_string(body))
 
 	func _send(msg: Dictionary) -> void:
+		if msg.has("method"):
+			_log("sent " + msg.method, msg.params.get("uri", ""))
 		msg["jsonrpc"] = "2.0"
 		var body := JSON.stringify(msg).to_utf8_buffer()
 		peer.put_data(("Content-Length: %d\r\n\r\n" % body.size()).to_ascii_buffer() + body)
@@ -1297,6 +1307,8 @@ class FakeLsp:
 	func _handle(msg: Dictionary) -> void:
 		var method: String = msg.get("method", "")
 		var params: Dictionary = msg.get("params", {}) if msg.get("params") is Dictionary else {}
+		var doc: Variant = params.get("textDocument")
+		_log(method if method != "" else "response", doc.get("uri", "") if doc is Dictionary else "")
 		match method:
 			"initialize":
 				_send({"id": msg.id, "result": {"capabilities": {"textDocumentSync": 1, "documentSymbolProvider": true}}})
@@ -1320,6 +1332,7 @@ class FakeLsp:
 ## errors in the quickfix list.
 func _test_project_errors() -> void:
 	print("project errors")
+	var failures_before := _failures
 	var cwd := OS.get_cache_dir().path_join("godot nvim errors")
 	_remove_dir(cwd)
 	DirAccess.make_dir_recursive_absolute(cwd.path_join("sub"))
@@ -1343,7 +1356,7 @@ func _test_project_errors() -> void:
 		var all_closed := func():
 			lsp.poll()
 			return lsp.closed.size() >= want_closed
-		await _wait(all_closed, 5000)
+		check(await _wait(all_closed, 5000), "%s: %d closes arrived: %s" % [cmd, want_closed, lsp.closed])
 		# The quickfix list is filled once the closes are sent.
 		for i in 5:
 			lsp.poll()
@@ -1361,9 +1374,9 @@ func _test_project_errors() -> void:
 	# A script open in Neovim is left to Neovim, which already has it open.
 	view.rpc.request("nvim_command", ["wincmd p"])
 	view.open_file(cwd.path_join("sub/bad.gd"))
-	await _wait(func():
+	check(await _wait(func():
 		lsp.poll()
-		return lsp.open.size() == 1)
+		return lsp.open.size() == 1), "Neovim opened bad.gd with the language server: %s" % [lsp.open])
 	FileAccess.open(cwd.path_join("sub/bad.gd"), FileAccess.WRITE).store_string("extends Node\n")
 	view.rpc.request("nvim_command", ["edit!"])
 	for i in 10:
@@ -1378,10 +1391,38 @@ func _test_project_errors() -> void:
 	check(not lsp.double_open, "no second open of a script Neovim has open")
 	check(lsp.open.size() == 1, "Neovim's own script stays open: %s" % [lsp.open])
 	check(got == [":GodotErrors", [], 0], "no errors: our list emptied and closed: %s" % [got])
+	if _failures > failures_before:
+		await _dump_project_errors(view, lsp)
 	view.stop()
 	view.queue_free()
 	_remove_dir(cwd)
 	await _test_project_errors_symlink()
+
+
+## Prints what the language server got and what Neovim has open, so that a
+## failure that doesn't reproduce still shows its cause.
+func _dump_project_errors(view: NvimView, lsp: FakeLsp) -> void:
+	print("  language server log (msec, message, file):")
+	for l in lsp.log:
+		print("    ", l)
+	var lua := "local get = vim.lsp.get_clients or vim.lsp.get_active_clients " \
+		+ "local bufs = {} for _, b in ipairs(vim.api.nvim_list_bufs()) do " \
+		+ "table.insert(bufs, string.format('%d %s loaded=%s clients=%s', b, vim.api.nvim_buf_get_name(b), " \
+		+ "tostring(vim.api.nvim_buf_is_loaded(b)), vim.inspect(vim.tbl_map(function(c) return c.id end, get({ bufnr = b }))))) end " \
+		+ "local wins = {} for _, w in ipairs(vim.api.nvim_list_wins()) do " \
+		+ "table.insert(wins, string.format('%d buf=%d', w, vim.api.nvim_win_get_buf(w))) end " \
+		+ "return {bufs, wins, vim.api.nvim_get_current_win(), " \
+		+ "vim.tbl_map(function(c) return c.id .. ' ' .. c.name end, get()), vim.fn.execute('messages')}"
+	var r: Array = await _req(view, "nvim_exec_lua", [lua, []])
+	if r[0] != null or not r[1] is Array:
+		print("  Neovim state unavailable: %s" % [r])
+		return
+	print("  Neovim buffers:")
+	for b in r[1][0]:
+		print("    ", b)
+	print("  windows: %s, current %s" % [r[1][1], r[1][2]])
+	print("  language server clients: %s" % [r[1][3]])
+	print("  messages:", String(r[1][4]).indent("    "))
 
 
 ## A project reached through a symlink: Godot reports diagnostics under the
