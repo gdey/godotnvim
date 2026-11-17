@@ -133,7 +133,8 @@ func _enter_tree() -> void:
 	view.theme_changed.connect(_sync_theme)
 	EditorInterface.get_editor_main_screen().add_child(view)
 	view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	view.hide()
+	if not _main_dock():
+		view.hide()
 
 	_debugger = _DebuggerBridge.new()
 	_debugger.goto_line.connect(_on_debugger_goto_line)
@@ -192,6 +193,12 @@ func _exit_tree() -> void:
 		view.stop()
 		view.queue_free()
 		view = null
+	# Godot 4.8 puts the view in an EditorDock it makes for us (see
+	# NvimView._exit_tree), and takes the dock out of the editor but doesn't
+	# free it.
+	var dock := _main_dock()
+	if dock and not dock.is_inside_tree():
+		dock.queue_free()
 
 
 func _has_main_screen() -> bool:
@@ -223,10 +230,33 @@ func _save_external_data() -> void:
 
 
 func _make_visible(visible: bool) -> void:
+	if not view:
+		return
+	if _main_dock():
+		# Godot 4.8 shows and hides the view with its dock, and calls this
+		# only when it hands us a file to edit (its script editor gets the
+		# file too, and brings its own screen to the front).
+		if visible and not _driving_script_editor:
+			_bring_to_front.call_deferred()
+		return
+	view.visible = visible
+	if visible:
+		view.grab_focus()
+
+
+func _bring_to_front() -> void:
 	if view:
-		view.visible = visible
-		if visible:
-			view.grab_focus()
+		EditorInterface.set_main_screen_editor(_get_plugin_name())
+		view.grab_focus()
+
+
+## The EditorDock Godot 4.8 made for our main screen (see
+## NvimView._exit_tree), or null before 4.8.
+func _main_dock() -> Node:
+	if not has_meta("_dock"):
+		return null
+	var dock: Variant = get_meta("_dock")
+	return dock if is_instance_valid(dock) else null
 
 
 ## Resources whose file is plain source text. TextFile is Godot's internal

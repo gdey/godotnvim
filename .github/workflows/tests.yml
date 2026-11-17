@@ -1,13 +1,14 @@
 # Runs the tests on pull requests, on the oldest Neovim the plugin supports
-# and on the one the release is tested with.
+# and on the one the release is tested with. On the godot-4.8 branch it also
+# runs on Godot 4.8 (see .github/workflows/sync-godot-4.8.yml on main), on
+# pushes there too.
 name: Tests
 
 on:
   pull_request:
+  push:
+    branches: [godot-4.8]
   workflow_dispatch:
-
-env:
-  GODOT_VERSION: 4.7.1
 
 jobs:
   test:
@@ -18,6 +19,15 @@ jobs:
         # 0.10.0 is the minimum (inline virtual text, for the swatches and
         # resource icons); keep 0.11.4 in step with release.yml.
         nvim: ["0.10.0", "0.11.4"]
+        # Keep the -stable one in step with release.yml.
+        godot: ["4.7.1-stable"]
+        include:
+          # The next Godot release: change it to 4.8-stable once it is out.
+          - nvim: "0.11.4"
+            godot: "4.8-beta3"
+    env:
+      GODOT_VERSION: ${{ matrix.godot }}
+    name: test (Godot ${{ matrix.godot }}, Neovim ${{ matrix.nvim }})
     steps:
       - uses: actions/checkout@v7
 
@@ -28,13 +38,14 @@ jobs:
           curl -sSfLo nvim.tar.gz "$base/nvim-linux-x86_64.tar.gz" || curl -sSfLo nvim.tar.gz "$base/nvim-linux64.tar.gz"
           mkdir nvim && tar xzf nvim.tar.gz -C nvim --strip-components=1
           echo "$PWD/nvim/bin" >> "$GITHUB_PATH"
-          curl -sSLo godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl -sSfLo godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
           unzip -q godot.zip
-          echo "GODOT=$PWD/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+          echo "GODOT=$PWD/Godot_v${GODOT_VERSION}_linux.x86_64" >> "$GITHUB_ENV"
 
       - name: Run tests
         run: |
           nvim --version | head -1
+          "$GODOT" --version
           "$GODOT" --headless --path . --editor --quit
           NVIM=$(command -v nvim) "$GODOT" --headless --path . -s tests/run_tests.gd
 

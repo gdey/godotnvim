@@ -30,6 +30,7 @@ func _init() -> void:
 	await _test_project_errors()
 	await _test_lsp_late_start()
 	await _test_focus_steal()
+	await _test_reparent()
 	print("FAILED: %d" % _failures if _failures else "ALL PASSED")
 	quit(1 if _failures else 0)
 
@@ -70,6 +71,33 @@ func _test_focus_steal() -> void:
 	view.queue_free()
 	hidden.queue_free()
 	line.queue_free()
+	await process_frame
+
+
+## Godot 4.8 moves a main screen's view into an EditorDock right after the
+## plugin adds it, while Neovim starts: Neovim keeps running through the
+## move, starts at a usable size, and stops once the view leaves for good.
+func _test_reparent() -> void:
+	print("reparent")
+	var first := Control.new()
+	var second := Control.new()
+	root.add_child(first)
+	root.add_child(second)
+	var view := NvimView.new()
+	view.nvim_path = _nvim_path()
+	view.nvim_args = PackedStringArray(["--clean", "-n"])
+	first.add_child(view)
+	view.start()
+	view.reparent.call_deferred(second, false)
+	check(await _wait(func(): return view.attached and view.grid.height > 0), "attached across the move")
+	check(view.rpc.is_running() and view.get_parent() == second, "Neovim still running after the move")
+	check(view.grid.width >= 20 and view.grid.height >= 5, "started at a usable size though not laid out: %dx%d" % [view.grid.width, view.grid.height])
+	second.remove_child(view)
+	await process_frame
+	check(not view.rpc.is_running(), "stopped once out of the tree")
+	view.free()
+	first.queue_free()
+	second.queue_free()
 	await process_frame
 
 
