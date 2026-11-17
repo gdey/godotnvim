@@ -196,6 +196,17 @@ or hides the Script tab.
 
 ![Manage Editor Feature Profiles with Script Editor unticked](docs/screenshots/profiles-manage-features.png)
 
+Turning the Script screen off also makes Godot hide **Attach Script**,
+**Extend Script** and **Detach Script** in the Scene dock. While the current
+profile hides scripts, the plugin puts them back: the toolbar buttons (top:
+a node without a script; bottom: one with a script) and the right-click menu
+items. New scripts open in Neovim. Built-in scripts are off in the dialog,
+since nothing could edit them with the Script screen hidden. A shortcut you
+give Attach Script under Editor Settings → Shortcuts → Scene Tree Dock works
+too.
+
+![Attach, Extend and Detach Script in the Scene dock with Default-neovim](docs/screenshots/scene-dock-scripts.png)
+
 ## Running the project
 
 Godot's run shortcuts work while typing in Neovim: Run Project, Run Current
@@ -505,6 +516,7 @@ Neovim commands: `:GodotRun`, `:GodotRunCurrent`, `:GodotRunScene`,
 | `nvim/colors/godot.lua` | The `godot` colorscheme (needs the colors from the editor) |
 | `debugger_bridge.gd` | EditorDebuggerPlugin: forwards the debugger's go-to-line and breakpoint events |
 | `editor_profiles.gd` | Makes the `-neovim` editor feature profiles |
+| `script_actions.gd` | Attach / Extend / Detach Script in the Scene dock while a profile hides scripts |
 | `export_excluder.gd` | EditorExportPlugin: keeps the addon out of exported games |
 | `plugin.gd` | EditorPlugin: the main-screen tab, opening files, editor settings, breakpoint/connection/override/color sync, run actions |
 

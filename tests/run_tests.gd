@@ -16,6 +16,7 @@ func _init() -> void:
 	_test_resource_literal()
 	_test_overrides()
 	_test_editor_profiles()
+	_test_script_actions()
 	_test_find_executable()
 	_test_run_editor_script()
 	_test_export()
@@ -349,6 +350,47 @@ func _test_editor_profiles() -> void:
 	var p2d: Dictionary = read.call("2D-neovim")
 	check(p2d.get("disabled_features") == ["3d", "script"] and p2d.get("disabled_classes") == ["Node3D"], "2D-neovim keeps 2D's settings: %s" % [p2d])
 	check(Profiles.create(dir).is_empty(), "existing -neovim profiles are left alone")
+
+
+## Which of Attach / Extend / Detach Script the Scene dock offers while a
+## profile hides scripts, and reading that from the profile.
+func _test_script_actions() -> void:
+	print("script actions")
+	var Actions = load("res://addons/godot_nvim/script_actions.gd")
+	var Profiles = load("res://addons/godot_nvim/editor_profiles.gd")
+	var dir := OS.get_cache_dir().path_join("godot_nvim_profiles")
+	DirAccess.make_dir_recursive_absolute(dir)
+	var path := dir.path_join("x.profile")
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify({"type": "feature_profile", "disabled_features": ["3d", "script"]}))
+	check(Profiles.disables_scripts(path), "profile with script off")
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify({"type": "feature_profile", "disabled_features": ["3d"]}))
+	check(not Profiles.disables_scripts(path), "profile with script on")
+	DirAccess.remove_absolute(path)
+	check(not Profiles.disables_scripts(path) and not Profiles.disables_scripts(""), "no profile")
+	var file_script := load("res://tests/fixtures/sample.gd") as Script
+	var built_in := GDScript.new()
+	built_in.source_code = "extends Node\n"
+	built_in.reload()
+	built_in.resource_path = "res://tests/fixtures/scene.tscn::GDScript_1"
+	var plain := Node.new()
+	var scripted := Node.new()
+	scripted.set_script(file_script)
+	var inline := Node.new()
+	inline.set_script(built_in)
+	var custom := Node.new()
+	custom.set_script(file_script)
+	custom.set_meta(&"_custom_type_script", file_script)
+	var a := func(nodes: Array) -> Array:
+		var d: Dictionary = Actions.actions(nodes)
+		return [d["attach"], d["extend"], d["detach"]]
+	check(a.call([plain]) == [true, false, false], "no script: attach")
+	check(a.call([scripted]) == [false, true, true], "file script: extend, detach")
+	check(a.call([inline]) == [false, false, true], "built-in script: detach only")
+	check(a.call([custom]) == [false, true, false], "custom type's own script: extend only")
+	check(a.call([plain, scripted]) == [false, false, true], "two nodes: detach only")
+	check(a.call([plain, plain]) == [false, false, false], "two nodes without scripts: nothing")
+	for n in [plain, scripted, inline, custom]:
+		n.free()
 
 
 func _test_overrides() -> void:

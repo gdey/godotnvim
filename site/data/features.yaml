@@ -91,4 +91,5 @@
   docs: hiding-the-script-screen
   text: >-
     One menu item makes copies of your editor feature profiles with the Script
-    tab hidden, so Neovim is the only script editor.
+    tab hidden, so Neovim is the only script editor. Attach Script stays in
+    the Scene dock.

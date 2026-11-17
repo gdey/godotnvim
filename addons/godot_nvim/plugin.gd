@@ -23,6 +23,7 @@ const _DebuggerBridge := preload("res://addons/godot_nvim/debugger_bridge.gd")
 const _ThemeColors := preload("res://addons/godot_nvim/theme_colors.gd")
 const _EditorProfiles := preload("res://addons/godot_nvim/editor_profiles.gd")
 const _ExportExcluder := preload("res://addons/godot_nvim/export_excluder.gd")
+const _ScriptActions := preload("res://addons/godot_nvim/script_actions.gd")
 const _PROFILES_MENU := "Create Neovim Editor Profiles"
 ## Where GUI-launched editors may find formatters besides PATH.
 const _FORMATTER_DIRS := ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "~/.local/bin", "~/.cargo/bin"]
@@ -61,6 +62,8 @@ var _sent_scenes := []
 ## The Signals dock's tree and context menus, whose "Go to Method" we follow.
 var _signals_tree: Tree
 var _signals_menus: Array[PopupMenu] = []
+## The Scene dock's Attach/Extend/Detach Script while a profile hides scripts.
+var _script_actions: Node
 
 
 func _enter_tree() -> void:
@@ -149,6 +152,12 @@ func _enter_tree() -> void:
 
 	add_tool_menu_item(_PROFILES_MENU, _create_profiles)
 	_hook_signals_dock()
+	_script_actions = _ScriptActions.new(self)
+	_script_actions.script_opened = func(script: Script) -> void:
+		_sync_scenes()
+		view.open_file(script.resource_path)
+		EditorInterface.set_main_screen_editor(_get_plugin_name())
+	add_child(_script_actions)
 
 	view.start()
 
@@ -159,6 +168,9 @@ func _exit_tree() -> void:
 		_export_excluder = null
 	remove_tool_menu_item(_PROFILES_MENU)
 	_unhook_signals_dock()
+	if _script_actions:
+		_script_actions.queue_free()
+		_script_actions = null
 	var es := EditorInterface.get_editor_settings()
 	if es.settings_changed.is_connected(_sync_theme):
 		es.settings_changed.disconnect(_sync_theme)

@@ -20,6 +20,15 @@ static func neovim_name(base: String) -> String:
 	return (base if base != "" else DEFAULT_BASE) + SUFFIX
 
 
+## Whether the profile file at [param path] turns the Script screen off.
+## False when there is no such file (no profile, or one that was deleted).
+static func disables_scripts(path: String) -> bool:
+	if path == "" or not FileAccess.file_exists(path):
+		return false
+	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return data is Dictionary and SCRIPT_FEATURE in data.get("disabled_features", [])
+
+
 ## For every profile in [param dir] without a "-neovim" twin, saves one with
 ## the Script screen disabled. Existing "-neovim" profiles are left as they
 ## are. With no profiles at all, makes "Default-neovim" from a blank profile.

@@ -16,6 +16,13 @@ swatches and resource icons don't show there.
 
 ### Fixed
 
+- **Attach Script** stays in the Scene dock with a `-neovim` editor profile.
+  Hiding the Script screen made Godot hide Attach, Extend and Detach Script
+  too; the plugin now adds the toolbar buttons and right-click menu items
+  back, and opens new scripts in Neovim
+  ([#43](https://github.com/gdey/godotnvim/issues/43)).
+
+  ![Attach, Extend and Detach Script in the Scene dock with Default-neovim](docs/screenshots/scene-dock-scripts.png)
 - Every page now gives the same requirement: Neovim 0.10 or newer, with 0.11+
   recommended. Pull requests now run the tests on Neovim 0.10.0 and 0.11.4.
 - `:w` could leave Neovim without the keyboard on Linux. Saving reloads
