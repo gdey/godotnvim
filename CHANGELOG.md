@@ -12,9 +12,9 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ## [0.6.0] - 2026-11-17
 
-**Neovim 0.10 is now the minimum** (the minimum Godot version is unchanged,
-4.5). **Attach Script** stays in the Scene dock when a `-neovim` editor
-profile hides the Script screen, and `:w` no longer leaves Neovim without the
+**Neovim 0.10 or newer is now required** (Godot 4.5 or newer, unchanged).
+**Attach Script** stays in the Scene dock when a `-neovim` editor profile
+hides the Script screen, and `:w` no longer leaves Neovim without the
 keyboard on Linux.
 
 ### Fixed
