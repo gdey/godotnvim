@@ -1,0 +1,73 @@
+# Keeps the godot-4.8 branch current with main until Godot 4.8 is stable.
+# Work that needs Godot 4.8 goes to godot-4.8 (PRs target it), so main and
+# its releases stay on the stable Godot versions.
+#
+# On every push to main this merges main into godot-4.8 and runs the tests
+# there. If the merge conflicts, it opens a PR from sync/main-to-godot-4.8
+# (main's tip) into godot-4.8; resolve the conflicts on that PR's branch and
+# merge it. While that PR is open, later runs leave it alone.
+#
+# Needs Settings → Actions → General → "Allow GitHub Actions to create and
+# approve pull requests" for the conflict PR. Pushes and PRs made with the
+# workflow's token don't start other workflows, so this starts the tests
+# itself; a conflict PR's checks start when someone pushes to it.
+#
+# When Godot 4.8 is stable, merge godot-4.8 into main and delete this file.
+name: Sync godot-4.8
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: sync-godot-4.8
+  cancel-in-progress: false
+
+env:
+  TARGET: godot-4.8
+  SYNC_BRANCH: sync/main-to-godot-4.8
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET }}
+          fetch-depth: 0
+
+      - name: Merge main into ${{ env.TARGET }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "$TARGET already has main."
+            exit 0
+          fi
+          if git merge --no-edit -m "Merge main into $TARGET" origin/main; then
+            git push origin "HEAD:$TARGET"
+            gh workflow run tests.yml --ref "$TARGET"
+            exit 0
+          fi
+          git merge --abort
+          open=$(gh pr list --head "$SYNC_BRANCH" --base "$TARGET" --state open --json url --jq '.[0].url')
+          if [ -n "$open" ]; then
+            echo "::warning::main conflicts with $TARGET; resolve $open first."
+            exit 0
+          fi
+          git push --force origin "origin/main:refs/heads/$SYNC_BRANCH"
+          gh pr create --head "$SYNC_BRANCH" --base "$TARGET" \
+            --title "Merge main into $TARGET" \
+            --body "main no longer merges cleanly into \`$TARGET\`. Merge \`$TARGET\` into this branch, resolve the conflicts, push, and merge this PR.
+
+          Opened by the Sync godot-4.8 workflow."
+          echo "::warning::main conflicts with $TARGET; opened a PR to resolve it."
