@@ -10,9 +10,12 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ## [Unreleased]
 
-**Neovim 0.10 is now the minimum.** The README and website said 0.9 and the
-Asset Store page 0.11; Neovim 0.9 has no inline virtual text, so the color
-swatches and resource icons don't show there.
+## [0.6.0] - 2026-11-17
+
+**Neovim 0.10 is now the minimum** (the minimum Godot version is unchanged,
+4.5). **Attach Script** stays in the Scene dock when a `-neovim` editor
+profile hides the Script screen, and `:w` no longer leaves Neovim without the
+keyboard on Linux.
 
 ### Fixed
 
@@ -24,7 +27,10 @@ swatches and resource icons don't show there.
 
   ![Attach, Extend and Detach Script in the Scene dock with Default-neovim](docs/screenshots/scene-dock-scripts.png)
 - Every page now gives the same requirement: Neovim 0.10 or newer, with 0.11+
-  recommended. Pull requests now run the tests on Neovim 0.10.0 and 0.11.4.
+  recommended. The README and website said 0.9 and the Asset Store page
+  0.11; Neovim 0.9 has no inline virtual text, so the color swatches and
+  resource icons don't show there. Pull requests now run the tests on Neovim
+  0.10.0 and 0.11.4.
 - `:w` could leave Neovim without the keyboard on Linux. Saving reloads
   the file in Godot's hidden script editor, whose text editor took the focus
   and turned on the window's input method (IME); the view took the focus
@@ -242,6 +248,7 @@ signal and override signs, the editor's colors and the run shortcuts.
 - Asset Library packaging, and a release workflow that publishes the addon
   zip when a version tag is pushed.
 
+[0.6.0]: https://github.com/gdey/godotnvim/releases/tag/v0.6.0
 [0.5.0]: https://github.com/gdey/godotnvim/releases/tag/v0.5.0
 [0.4.0]: https://github.com/gdey/godotnvim/releases/tag/v0.4.0
 [0.3.0]: https://github.com/gdey/godotnvim/releases/tag/v0.3.0

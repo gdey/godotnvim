@@ -30,7 +30,7 @@ the parts of Godot's script editor that matter keep working.
 
 ![Ctrl-dropping two nodes inserts @onready vars](../screenshots/drag-and-drop.png)
 
-Needs Godot 4.5+ and Neovim, installed separately. To install, copy
+Needs Godot 4.5+ and Neovim 0.10+, installed separately. To install, copy
 `addons/godot_nvim` from `godot_nvim-<version>.zip` into your project's
 `addons/` folder and enable **Neovim Script Editor** under Project → Project
 Settings → Plugins. See the
