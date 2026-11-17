@@ -126,7 +126,15 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	get_viewport().gui_focus_changed.disconnect(_on_focus_changed)
-	stop()
+	# Leaving the tree may only be a move: Godot 4.8 moves a main screen's
+	# control into an EditorDock of its own, after the plugin's
+	# _enter_tree. Keep Neovim running unless the view stays out.
+	_stop_if_removed.call_deferred()
+
+
+func _stop_if_removed() -> void:
+	if not is_inside_tree():
+		stop()
 
 
 ## Reloading a file in Godot's script editor (on :w, or when Godot's window
@@ -330,6 +338,11 @@ func _on_api_info(err: Variant, res: Variant) -> void:
 		opts["lsp"] = {"host": lsp_host, "port": lsp_port}
 	rpc.request("nvim_exec_lua", [src, [chan, opts]])
 	var dims := _grid_dims()
+	# A view not laid out yet (Godot 4.8 moves a main screen's view into a
+	# dock of its own while Neovim starts) would start Neovim in a window too
+	# small for its startup messages; _on_resized fixes the size later.
+	if dims.x < 20 or dims.y < 5:
+		dims = Vector2i(80, 24)
 	rpc.request("nvim_ui_attach", [dims.x, dims.y, {"ext_linegrid": true, "rgb": true}])
 	attached = true
 	attached_to_nvim.emit()
@@ -393,6 +406,8 @@ func _on_exited() -> void:
 
 func _notification(what: int) -> void:
 	match what:
+		NOTIFICATION_PREDELETE:
+			rpc.stop()
 		NOTIFICATION_THEME_CHANGED:
 			# Icons follow the editor theme.
 			for path in _icon_chars:

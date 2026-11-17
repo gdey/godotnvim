@@ -21,7 +21,8 @@ Website: [gdey.github.io/godotnvim](https://gdey.github.io/godotnvim/)
 
 ## Requirements
 
-- **Godot 4.5 or newer.** The tests pass on 4.5.1, 4.6.1 and 4.7.1. On 4.4
+- **Godot 4.5 or newer.** The tests pass on 4.5.1, 4.6.1, 4.7.1, 4.7.2 and
+  4.8-beta3 (4.8 needs a release newer than 0.6.0). On 4.4
   the editor can be killed by `SIGPIPE` when Neovim stops, and 4.3 lacks
   APIs the plugin uses.
 - **Neovim 0.10 or newer**, installed separately. 0.11+ is recommended for its

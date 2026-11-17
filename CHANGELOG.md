@@ -10,6 +10,22 @@ The release workflow turns a version's section into its GitHub release notes.
 
 ## [Unreleased]
 
+**Godot 4.8 support.** Godot 4.8 puts each main screen in a dock of its own,
+which stopped Neovim as the editor started and opened scripts in Godot's own
+script editor; the Neovim screen now works on 4.8 as before (tested on
+4.8-beta3; Godot 4.5 or newer, unchanged).
+
+### Fixed
+
+- **Godot 4.8:** the Neovim screen stayed empty, because moving it into its
+  dock stopped Neovim, and opening a script showed Godot's Script screen
+  instead of Neovim. Neovim also no longer starts in a window too small for
+  its messages while the editor lays out, and turning the plugin off no
+  longer leaks its dock.
+
+  ![Neovim screen in Godot 4.8-beta3](docs/screenshots/godot-4.8.png)
+- Tests now run on Godot 4.8 (beta) in CI as well as 4.7.1.
+
 ## [0.6.0] - 2026-11-17
 
 **Neovim 0.10 or newer is now required** (Godot 4.5 or newer, unchanged).
